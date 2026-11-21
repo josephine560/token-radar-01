@@ -13,6 +13,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts --input ../input/snapshot.json
 
+import { createHash } from 'node:crypto';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,7 +52,11 @@ if (issue !== null) {
 }
 
 mkdirSync(out, { recursive: true });
-writeFileSync(join(out, 'board.json'), `${JSON.stringify({ rows: board })}\n`);
+const boardText = `${JSON.stringify({ rows: board })}\n`;
+writeFileSync(join(out, 'board.json'), boardText);
+// The board's own hash, so a reader can check the board the page shows is
+// the board the program wrote: the dashboard prints it in its footer.
+radar.board_sha256 = createHash('sha256').update(boardText).digest('hex');
 writeFileSync(join(out, 'data.js'), dataScript(radar));
 
 /** Copy one directory's regular files into `to`, skipping names that start with a dot. */
@@ -89,9 +94,10 @@ const v = radar.validation;
 const effTop = [...board].sort((a, b) => b.implied_per_capital_usd - a.implied_per_capital_usd).slice(0, 3);
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist, ${board.length} rows scored (${radar.early_size} early, ${radar.live_size} live set aside)\n` +
-    `token radar: efficiency top 3 by implied value per $1 locked: ${effTop.map((r) => `${r.slug} #${r.rank} $${r.implied_per_capital_usd.toLocaleString('en-US')}`).join(', ')}; break-even is time cost at $25/h, chain fee unknown and excluded\n` +
+    `token radar: efficiency top 3 by implied value per $1 locked: ${effTop.map((r) => `${r.slug} #${r.rank} $${r.implied_per_capital_usd.toLocaleString('en-US')}`).join(', ')}; break-even is time cost at $25/h + network fees (Nov 2026 medians) + 0.25% pool fee on swap legs; ${radar.fee_unknown_rows} rows have no reliable fee figure\n` +
     `token radar: fit log(mcap/TVL) = ${v.fit_a.toFixed(4)} + ${v.fit_b.toFixed(4)} log(TVL) on n=${v.fit_n}, R2=${v.r2.toFixed(3)}, LOO median abs log err ${v.loo_median_abs_log_err.toFixed(3)} (global-median baseline ${v.baseline_global_median_loo.toFixed(3)}, starter formula ${v.starter_median_abs_log_err.toFixed(3)})\n` +
     `token radar: walk-forward train=${v.walkforward_train_n} test=${v.walkforward_test_n}, OLS ${v.walkforward_ols_median_abs_log_err.toFixed(3)} vs global median ${v.walkforward_global_median.toFixed(3)}; coverage ${radar.coverage.ranked} ranked + ${radar.coverage.pre_token_unranked} pre-token counted + ${radar.coverage.token_recorded} token-recorded = ${radar.coverage.total}\n` +
-    `token radar: odds cross-validation (4x5-fold, token presence): Brier ${v.odds_cv_brier.toFixed(3)} with age-not-recorded bucket vs ${v.odds_cv_brier_no_null.toFixed(3)} without; log loss ${v.odds_cv_logloss.toFixed(3)} vs ${v.odds_cv_logloss_no_null.toFixed(3)}; rejected value terms, leave-one-out: quadratic ${v.quadratic_term_loo.toFixed(3)}, category shrinkage ${v.category_shrink_loo.toFixed(3)}, imputed curve ${v.imputed_curve_loo.toFixed(3)}\n` +
+    `token radar: odds cross-validation (4x5-fold, token presence): Brier ${v.odds_cv_brier.toFixed(3)} with age-not-recorded bucket vs ${v.odds_cv_brier_no_null.toFixed(3)} without; log loss ${v.odds_cv_logloss.toFixed(3)} vs ${v.odds_cv_logloss_no_null.toFixed(3)}; rejected value terms, leave-one-out: quadratic ${v.quadratic_term_loo.toFixed(3)}, category shrinkage ${v.category_shrink_loo.toFixed(3)} (n/(n+50) ${v.category_shrink_50_loo.toFixed(3)}), winsorized ${v.winsorized_loo.toFixed(3)}, Theil-Sen ${v.theil_sen_loo.toFixed(3)}, imputed curve ${v.imputed_curve_loo.toFixed(3)}\n` +
+    `token radar: board sha256 ${radar.board_sha256.slice(0, 12)}\n` +
     `token radar: wrote ${join(out, 'board.json')}, ${join(out, 'data.js')}, ${join(out, 'dashboard')} (3 files), ${join(out, 'screenshots')} (${shots.length} images) and ${join(out, 'dossier.json')}\n`,
 );
