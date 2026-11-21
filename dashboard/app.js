@@ -1,27 +1,52 @@
-// Token Radar dashboard, radar-4. Reads window.RADAR (written beside dashboard/
+// Token Radar dashboard, radar-5. Reads window.RADAR (written beside dashboard/
 // by main.ts) and renders the ranked board, a filterable table, a per-protocol
 // detail drawer with the model's own inputs, the farm economics and the farm plan.
-// No network: every byte it shows is in data.js. The page recomputes each row's
-// farm plan from the same inputs main.ts used, so the page and board.json agree.
+// No network: every byte it shows is in data.js. The page shows board.json's own
+// farm steps (carried in data.js), so the page and the board cannot disagree.
 //
 // Read this first — the decision summary the page opens with (KPI strip, top):
 // model log(mcap/TVL) = 6.965 - 0.478 log(TVL), n=128, R2 0.168, leave-one-out
 // median error 1.22 (about x3.4) vs 1.62 global-median and 1.63 starter baselines,
 // walk-forward 1.43 vs 1.64; odds by age, 4x5-fold CV Brier 0.213 with the
-// age-not-recorded bucket vs 0.221 without; coverage 758/758 (200 ranked: 40
-// watchlist + 160 early; 142 pre-token counted; 416 token-recorded set aside);
-// verdicts FARM 45 / THIN 60 / SKIP 95. Farm economics are honest by construction:
-// break-even is time cost only (hours x $25/hour, an assumption the reader can
-// change on this page), the chain fee is unknown and excluded, the snapshot
-// carries no airdrop share, so no row promises dollars per farmer — implied
-// value per $1 locked and per hour are priority indexes, not returns, and each
-// row names what would flip its verdict.
+// age-not-recorded bucket vs 0.221 without; coverage 758/758 (198 ranked: 40
+// watchlist + 158 early; 144 pre-token counted; 416 token-recorded set aside);
+// verdicts FARM 44 / THIN 58 / SKIP 96. Farm economics are honest by construction:
+// break-even is time cost (hours x $25/hour, an assumption the reader can change
+// on this page) plus the plan's network fees plus the 0.25% pool fee where a plan
+// swaps; the snapshot carries no airdrop share, so no row promises dollars per
+// farmer — implied value per $1 locked and per hour are priority indexes, not
+// returns, and each row names what would flip its verdict.
+//
+// Chain fees, researched 2026-11-22 from public trackers (growthepie, L2Fees.info,
+// GasNow, DataWallet, DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers,
+// Monad docs). One DEX swap's network fee, USD, then the conservative per-tx
+// figure the farm math uses (the range's high end). "est" = estimate, not a
+// measured median. Chains with no reliable public figure are absent on purpose:
+// Ethereum 0.02-0.25 / 0.25; Arbitrum 0.007-0.024 / 0.024; Binance 0.005-0.01 / 0.01;
+// Base 0.002-0.018 / 0.018; Solana 0.001-0.01 / 0.01 (first token account ~0.00204
+// SOL rent, ~$0.16, refundable); Avalanche 0.009 / 0.009; Polygon 0.003-0.006 / 0.006;
+// Optimism 0.001-0.031 / 0.031 (sources disagree ~30x, high end used); Bitcoin no
+// swap, transfer 0.09; Tron 1-4 / 4 est; Robinhood Chain 0.01 / 0.01 est; Linea
+// 0.028-0.037 / 0.037; Sonic 0.0002 / 0.0002 est; Sui 0.0007-0.0013 / 0.0013;
+// Mantle 0.002-0.005 / 0.005 est; Scroll 0.001-0.052 / 0.052 (sources disagree ~50x);
+// Berachain 0.0001 / 0.0001 est; xDai <0.001 / 0.001; Celo 0.002 / 0.002 est;
+// zkSync Era 0.02-0.048 / 0.048; Cardano no swap, transfer 0.023; Unichain
+// 0.0003-0.0005 / 0.0005; TON no swap, transfer 0.001; Sei 0.001 / 0.001 est;
+// Stellar 0.0001 / 0.0001 est; Algorand 0.001 / 0.001 est; Aptos 0.0001-0.0005 /
+// 0.0005 est; Blast 0.025 / 0.025; Monad 0.0005-0.001 / 0.001; Hyperliquid L1
+// (HyperEVM gas) 0.033-0.062 / 0.062. No reliable figure: Flare, Katana, Arc, Hemi,
+// Pharos, Plume, Ink, Stable, TAC, Mezo, Citrea, Noble, Bittensor, Fantom, Plasma,
+// Ripple, Provenance, RISE and the long tail — those rows say the fee is unknown.
+// A round trip is about 4-6 transactions (approve, setup, weekly actions, claim,
+// exit), so multiply the single-swap figure; bridging is usually the biggest fee
+// (~$0.30-$4 per $500 stablecoin bridge, May 2026 quotes) and the pool fee
+// (0.25% of a swap) dwarfs gas on most chains now.
 (function () {
   'use strict';
   var DATA = window.RADAR;
   if (!DATA) return;
   var app = document.getElementById('board');
-  var state = { q: '', category: 'all', chain: 'all', verdict: 'all', watchlistOnly: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, hourlyRate: 25 };
+  var state = { q: '', category: 'all', chain: 'all', verdict: 'all', watchlistOnly: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, hourlyRate: 25, view: null };
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function fmtUsd(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
@@ -51,10 +76,18 @@
     return node;
   }
   // Farm plan: the same derivation main.ts writes to board.json. Category, chains,
-  // TVL and age decide the action, the capital, the hold and every cost and time.
+  // TVL and age decide the action, the capital, the hold and every cost and time;
+  // the row's own fee fields (from the researched November-2026 table) decide
+  // the network fees. The page and board.json agree because both run this
+  // derivation from the same inputs; the build checks it row by row.
   function chainOf(p) { return p.chains && p.chains.length ? p.chains[0] : 'its main chain'; }
   function capitalFor(p) { if (p.tvl_usd >= 5e9) return 250; if (p.tvl_usd >= 1e9) return 150; if (p.tvl_usd >= 1e8) return 100; return 50; }
   function holdDaysFor(age) { if (age === null || age === undefined) return 30; if (age < 180) return 60; if (age < 365) return 45; return 30; }
+  function money2(n) {
+    var digits = n >= 1 ? 2 : n >= 0.01 ? 3 : 4;
+    var s = n.toFixed(digits).replace(/\.?0+$/, '');
+    return '$' + (s === '' || s === '-' ? '0' : s);
+  }
   function actionFor(p, capital, chain) {
     var c = (p.category || '').toLowerCase(); var name = p.name;
     if (c.indexOf('lend') >= 0 || c.indexOf('cdp') >= 0 || c.indexOf('collateral') >= 0) return 'Supply $' + capital + ' of USDC to ' + name + ' on ' + chain + ' and keep the position open.';
@@ -72,13 +105,19 @@
   function stepText(s) { var t = s.text + ' Cost: ' + s.cost + '. Time: ' + s.time + '.'; if (t.length > 600) t = t.slice(0, 596) + '...'; return t; }
   function farmSteps(p) {
     var chain = chainOf(p), capital = capitalFor(p), hold = holdDaysFor(p.age_days);
+    var fee = p.fee_unknown ? null : { perTx: p.fee_per_tx_usd, lo: p.fee_swap_lo_usd, hi: p.fee_swap_hi_usd };
+    var pool = p.pool_fee_usd > 0 ? capital * 0.0025 : 0; // board.json rounds pool_fee_usd to cents; the step text uses the unrounded 0.25% of capital, as main.ts does
+    var perTx = function (n) { return fee === null ? 'the chain fee (no reliable public figure for ' + chain + ')' : 'about ' + money2(n) + ' in network fees on ' + chain; };
+    var swapRange = fee === null ? 'no reliable public fee figure for ' + chain + ' — check the live fee first'
+      : fee.lo === null ? 'no DEX swap on ' + chain + '; a plain transaction costs about ' + money2(fee.perTx)
+      : 'a swap on ' + chain + ' typically costs ' + money2(fee.lo) + '-' + money2(fee.hi) + ' in network fees (Nov 2026 medians)';
     return [
-      { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'no capital yet; check the chain fee before the first transaction', time: '5 minutes' },
-      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital, plus the chain fee the snapshot does not carry', time: '15 minutes to set up' },
-      { text: 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.', cost: 'the chain fee each week, which the snapshot does not carry', time: '10 minutes a week' },
+      { text: 'Use a fresh wallet that holds only the funds you plan to farm, and keep its seed phrase offline.', cost: 'no capital yet; ' + swapRange, time: '5 minutes' },
+      { text: actionFor(p, capital, chain), cost: '$' + capital + ' of capital, plus ' + perTx(2 * (fee ? fee.perTx : 0)) + ' to set up' + (pool > 0 ? ', plus ' + money2(pool) + ' pool fee on the swap leg' : ''), time: '15 minutes to set up' },
+      { text: 'Make one qualifying action each week, such as a deposit, a borrow, a swap or a vote.', cost: perTx(fee ? fee.perTx : 0) + ' each week', time: '10 minutes a week' },
       { text: 'Hold the position for at least ' + hold + ' days so the activity is counted in more than one snapshot.', cost: 'the $' + capital + ' stays in the position', time: hold + ' days' },
-      { text: "Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.", cost: 'no fee to check, and never pay to claim', time: '10 minutes' },
-      { text: 'Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log', time: '5 minutes' }
+      { text: "Before you withdraw, open the protocol's own points or rewards page and claim only from the link it publishes.", cost: perTx(fee ? fee.perTx : 0) + ' to claim, and never pay to claim', time: '10 minutes' },
+      { text: 'Write the wallet, the dates and every transaction in a farm log so you can repeat the position or unwind it.', cost: 'nothing but the log (' + p.tx_count + ' transactions in all)', time: '5 minutes' }
     ].map(stepText);
   }
   function readHash() {
@@ -89,6 +128,7 @@
     if (params.get('p')) state.selected = params.get('p');
     if (params.get('category')) state.category = params.get('category');
     if (params.get('verdict')) state.verdict = params.get('verdict');
+    if (params.get('view')) state.view = params.get('view');
   }
   function writeHash() {
     var params = new URLSearchParams();
@@ -143,19 +183,8 @@
   function lede() {
     var c = DATA.coverage;
     return el('section', { class: 'lede' },
-      el('div', null,
-        el('h1', { text: DATA.watchlist_size + ' watchlist protocols, ranked by implied value' }),
-        el('p', { text: 'The watchlist is the floor: every protocol with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL that records no token. The early radar adds ' + DATA.early_size + ' pre-token protocols below that floor. Implied value is a fitted model, not a promise: the median error is about 3x, so read the band, not the point.' }),
-        el('div', { class: 'strip' },
-          el('span', null, 'Accounted: ', el('b', { text: c.total + ' protocols' })),
-          el('span', null, el('b', { text: c.ranked + ' ranked' }), ' (', el('b', { text: c.watchlist + ' watchlist' }), ' + ', el('b', { text: c.early + ' early' }), ')'),
-          el('span', null, el('b', { text: c.pre_token_unranked + ' pre-token counted' }), ', not ranked'),
-          el('span', null, el('b', { text: c.token_recorded + ' record a token' }), ', set aside'))),
-      el('div', { class: 'facts' },
-        el('div', { class: 'fact' }, el('span', { text: 'Watchlist covered' }), el('b', { text: DATA.watchlist_size + ' / ' + DATA.watchlist_size })),
-        el('div', { class: 'fact' }, el('span', { text: 'Pre-token rows scored' }), el('b', { text: String(DATA.board_size) })),
-        el('div', { class: 'fact' }, el('span', { text: 'FARM verdicts' }), el('b', { text: String(DATA.rows.filter(function (r) { return r.verdict === 'farm'; }).length) })),
-        el('div', { class: 'fact' }, el('span', { text: 'Live-token protocols set aside' }), el('b', { text: String(DATA.live_size) + ' shown, ' + DATA.coverage.live_counted + ' counted' }))));
+      el('h1', { text: DATA.watchlist_size + ' watchlist protocols, ranked by implied value' }),
+      el('p', { text: 'The watchlist is the floor: every protocol with at least $' + Math.round(DATA.floor_usd / 1e6) + 'M of TVL that records no token. The early radar adds every other rankable pre-token protocol — ' + c.early_above_floor + ' at or above the floor the watchlist rule leaves out, and ' + c.early_below_floor + ' below it — and no bridged, staked or wrapped product of a token that already trades. Implied value is a fitted model, not a promise: the median error is about 3x, so read the band, not the point.' }));
   }
 
   function kpiStrip() {
@@ -171,7 +200,7 @@
       kpi('Value model', 'log(mcap/TVL) = ' + v.fit_a.toFixed(3) + ' ' + (v.fit_b < 0 ? '- ' : '+ ') + Math.abs(v.fit_b).toFixed(3) + ' log(TVL)', 'fitted on n=' + v.fit_n + ', R2 ' + v.r2.toFixed(3)),
       kpi('Leave-one-out error', v.loo_median_abs_log_err.toFixed(2) + ' (about x' + Math.exp(v.loo_median_abs_log_err).toFixed(1) + ')', 'vs ' + v.baseline_global_median_loo.toFixed(2) + ' median, ' + v.starter_median_abs_log_err.toFixed(2) + ' starter; walk-forward ' + v.walkforward_ols_median_abs_log_err.toFixed(2) + ' vs ' + v.walkforward_global_median.toFixed(2)),
       kpi('Peer odds (CV)', 'Brier ' + v.odds_cv_brier.toFixed(3) + ' vs ' + v.odds_cv_brier_no_null.toFixed(3), 'with vs without the age-not-recorded bucket; log loss ' + v.odds_cv_logloss.toFixed(3) + ' vs ' + v.odds_cv_logloss_no_null.toFixed(3)),
-      kpi('Coverage', c.total + ' / ' + c.total + ' protocols', c.ranked + ' ranked (40 watchlist + ' + c.early + ' early), ' + c.pre_token_unranked + ' counted, ' + c.token_recorded + ' set aside'),
+      kpi('Coverage', c.total + ' / ' + c.total + ' protocols', c.ranked + ' ranked (40 watchlist + ' + c.early + ' early), ' + c.pre_token_unranked + ' counted, ' + c.token_recorded + ' set aside; ' + DATA.fee_unknown_rows + ' rows on chains with no fee figure'),
       kpi('Verdicts', 'FARM ' + farm + ' / THIN ' + thin + ' / SKIP ' + (DATA.rows.length - farm - thin), 'rank + odds, not a payout promise'),
       kpi('Best per $1 locked', fmtUsd(effTop.implied_per_capital_usd) + ' per $1', effTop.name + ' (rank #' + effTop.rank + '): a priority index, not a return'));
   }
@@ -308,6 +337,9 @@
           el('div', null, el('span', { text: 'Rejected: +growth and age terms' }), el('b', { text: v.age_term_loo.toFixed(2) + ' (worse)' })),
           el('div', null, el('span', { text: 'Rejected: quadratic log(TVL) term' }), el('b', { text: v.quadratic_term_loo.toFixed(2) + ' (no better)' })),
           el('div', null, el('span', { text: 'Rejected: category shrinkage' }), el('b', { text: v.category_shrink_loo.toFixed(2) + ' (worse)' })),
+          el('div', null, el('span', { text: 'Rejected: category shrinkage, n/(n+50)' }), el('b', { text: v.category_shrink_50_loo.toFixed(2) + ' (worse)' })),
+          el('div', null, el('span', { text: 'Rejected: winsorized fit' }), el('b', { text: v.winsorized_loo.toFixed(2) + ' (worse)' })),
+          el('div', null, el('span', { text: 'Rejected: Theil-Sen fit' }), el('b', { text: v.theil_sen_loo.toFixed(2) + ' (worse)' })),
           el('div', null, el('span', { text: 'Rejected: imputing market-cap-null tokens' }), el('b', { text: v.imputed_curve_loo.toFixed(2) + ' (no change)' })),
           el('div', null, el('span', { text: 'Odds cross-validation, Brier (lower is better)' }), el('b', { text: v.odds_cv_brier.toFixed(3) + ' with age-not-recorded bucket vs ' + v.odds_cv_brier_no_null.toFixed(3) + ' without' }))),
         el('div', null,
@@ -316,7 +348,19 @@
             el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Age with no token' }), el('th', { scope: 'col', text: 'Peers' }), el('th', { scope: 'col', text: 'Record a token' }), el('th', { scope: 'col', text: 'Odds used' }))),
             el('tbody', null, oddsRows)),
           el('p', { class: 'sub', text: 'Odds are smoothed toward the overall rate (' + (DATA.coverage.token_recorded / DATA.coverage.total * 100).toFixed(0) + '%) with a 20-protocol prior. They are a peer benchmark, not a launch forecast. Protocols whose listing date is not recorded get their own row: 113 such peers record a token 79% of the time, so they are not given the average rate.' }))),
-      el('p', { class: 'warn', text: 'Read the band, not the point. Only ' + v.live_with_mcap + ' of ' + v.token_recorded + ' token-recorded protocols carry a positive market cap, so the curve is fitted on a selected 128, and the median error is still about 3x. A rank range of #3 (2-9) means the protocol held rank 2 to 9 across 200 refits of that curve. The snapshot has no airdrop share and no fee, so no row promises dollars per farmer: the verdict ranks effort, and break-even is time cost only — hours at $25 an hour, an assumption you can change above — with the chain fee additional and unknown. Implied value per $1 locked and per hour are priority indexes, not returns: the implied value is the whole protocol\u2019s token value, not a per-farmer share.' }));
+      el('h3', { text: 'Chain fees — researched, not assumed' }),
+      el('p', { class: 'sub', text: 'The snapshot carries no fee, so every fee below was researched from public trackers on 2026-11-22 (growthepie, L2Fees.info, GasNow, DataWallet, DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). A swap is one DEX swap\'s network fee only; the pool fee (usually 0.25%) is extra and is charged in the farm math where a plan swaps. ' + DATA.fee_unknown_rows + ' of ' + DATA.board_size + ' rows sit on chains with no reliable public figure — those rows say the fee is unknown rather than quoting a guess. Gas prices move daily, so every figure is a November-2026 snapshot.' }),
+      el('table', { class: 'odds' },
+        el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Chain' }), el('th', { scope: 'col', text: 'One swap (network)' }), el('th', { scope: 'col', text: 'Per tx used' }), el('th', { scope: 'col', text: 'How measured' }))),
+        el('tbody', null, DATA.chain_fees.map(function (f) {
+          return el('tr', null,
+            el('td', { text: f.chain }),
+            el('td', { class: 'num', text: f.swap_lo_usd === null ? 'no swap' : money2(f.swap_lo_usd) + '-' + money2(f.swap_hi_usd) }),
+            el('td', { class: 'num', text: money2(f.per_tx_usd) }),
+            el('td', { text: f.quality === 'measured' ? 'measured median' : 'estimate' }));
+        }))),
+      el('p', { class: 'sub', text: 'Gotchas the plans price in: a first swap costs approve + swap; a first Solana token account costs ~0.00204 SOL rent (~$0.16, refundable); Tron USDT transfers cost $1-$4 when TRX is burned for energy; bridging (~$0.30-$4 per $500 stablecoin bridge) is usually the biggest fee in a plan; and a round trip is 4-6 transactions, so multiply the single-swap figure.' }),
+      el('p', { class: 'warn', text: 'Read the band, not the point. Only ' + v.live_with_mcap + ' of ' + v.token_recorded + ' token-recorded protocols carry a positive market cap, so the curve is fitted on a selected 128, and the median error is still about 3x. A rank range of #3 (2-9) means the protocol held rank 2 to 9 across 200 refits of that curve. The snapshot has no airdrop share and no fee, so no row promises dollars per farmer: the verdict ranks effort, and break-even is time cost plus the plan\'s network fees at November-2026 medians plus the pool fee where it swaps — ' + DATA.fee_unknown_rows + ' rows have no reliable fee figure, and for those the break-even is time cost only. Implied value per $1 locked and per hour are priority indexes, not returns: the implied value is the whole protocol\u2019s token value, not a per-farmer share.' }));
   }
   var dialog = el('dialog', { class: 'detail', id: 'detail', 'aria-labelledby': 'detail-title' });
   dialog.addEventListener('close', function () { state.selected = null; writeHash(); });
@@ -347,12 +391,13 @@
         el('div', null, el('span', { text: 'Implied value (fitted x odds)' }), el('b', { class: 'num', text: fmtUsd(row.implied_value_usd) })),
         el('div', null, el('span', { text: '10th-90th percentile over 200 refits' }), el('b', { class: 'num', text: fmtUsd(row.implied_low_usd) + ' - ' + fmtUsd(row.implied_high_usd) }))),
       el('p', { class: 'sub', text: 'Model ' + DATA.model_version + ': the same function scores every protocol. This is an estimate, not a price. Growth is shown because the reader should see it; the fitted curve tested it and dropped it, because it made leave-one-out error worse.' })));
-    var liveBreakEven = Math.round(row.time_hours * state.hourlyRate);
+    var liveTotal = Math.round(row.time_hours * state.hourlyRate + (row.network_fee_usd || 0) + row.pool_fee_usd);
+    var feeSuffix = row.fee_unknown ? ' + chain fee' : '';
     var tierRows = (row.deposit_tiers || []).map(function (t) {
       return el('tr', null,
         el('td', { class: 'num', text: '$' + t.capital_usd }),
         el('td', { class: 'num', text: fmtUsd(t.implied_per_capital_usd) + ' per $1' }),
-        el('td', { class: 'num', text: '$' + t.break_even_usd + ' at $25/h' }));
+        el('td', { class: 'num', text: '$' + t.break_even_usd + ' at $25/h' + feeSuffix }));
     });
     dialog.appendChild(el('section', { class: 'detail-section' },
       el('h3', { text: 'Farm economics' }),
@@ -360,17 +405,21 @@
         el('div', null, el('span', { text: 'Verdict' }), el('b', { text: row.verdict.toUpperCase() })),
         el('div', null, el('span', { text: 'Capital in the position' }), el('b', { class: 'num', text: '$' + row.capital_usd })),
         el('div', null, el('span', { text: 'Time, setup + weekly + claim' }), el('b', { class: 'num', text: row.time_hours.toFixed(1) + ' hours' })),
-        el('div', null, el('span', { text: 'Break-even airdrop at your hour' }), el('b', { class: 'num', text: '$' + liveBreakEven + ' at $' + state.hourlyRate + '/h' })),
+        el('div', null, el('span', { text: 'Network fees (' + row.tx_count + ' txs on ' + row.fee_chain + ')' }), el('b', { class: 'num', text: row.fee_unknown ? 'unknown — no reliable figure' : '$' + row.network_fee_usd.toFixed(2) })),
+        el('div', null, el('span', { text: 'Pool fee on the swap leg' }), el('b', { class: 'num', text: row.pool_fee_usd > 0 ? '$' + row.pool_fee_usd.toFixed(2) : 'none — this plan does not swap' })),
+        el('div', null, el('span', { text: 'Total cost to farm' }), el('b', { class: 'num', text: '$' + liveTotal + feeSuffix })),
+        el('div', null, el('span', { text: 'Break-even airdrop at your hour' }), el('b', { class: 'num', text: '$' + liveTotal + ' at $' + state.hourlyRate + '/h' + feeSuffix })),
         el('div', null, el('span', { text: 'Implied value per $1 of capital' }), el('b', { class: 'num', text: fmtUsd(row.implied_per_capital_usd) + ' (efficiency rank #' + row.eff_rank_capital + ')' })),
         el('div', null, el('span', { text: 'Implied value per hour' }), el('b', { class: 'num', text: fmtUsd(row.implied_per_hour_usd) + ' (efficiency rank #' + row.eff_rank_hour + ')' }))),
-      el('p', { class: 'sub', text: verdictText + ' Break-even is time cost only — hours at your hour above, an assumption, not a snapshot figure — with the chain fee additional and unknown, so check the chain fee before you start. The snapshot carries no airdrop share, so break-even is the airdrop that would have to arrive, not a payout this row promises.' }),
+      el('p', { class: 'sub', text: verdictText + ' Break-even is the airdrop that would have to arrive: your time at your hour above, plus network fees on ' + row.fee_chain + ' at November-2026 medians (' + row.tx_count + ' transactions: approve, setup, one a week, claim)' + (row.pool_fee_usd > 0 ? ', plus the 0.25% pool fee on the swap leg' : '') + '.' + (row.fee_unknown ? ' This chain has no reliable public fee figure, so the break-even above is time cost only — check the live fee before you start.' : '') + ' The snapshot carries no airdrop share, so break-even is the airdrop that would have to arrive, not a payout this row promises.' }),
+      row.fee_basis ? el('p', { class: 'sub', text: 'Fee basis: ' + row.fee_basis + (row.fee_quality === 'estimate' ? ' (estimate, not a measured median).' : '.') }) : null,
       el('p', { class: 'flip', text: 'What would flip this verdict: ' + row.flip_condition }),
       el('h3', { text: 'Deposit sizes — what a bigger deposit costs to lock' }),
       el('table', { class: 'odds tiers' },
         el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Deposit' }), el('th', { scope: 'col', text: 'Implied per $1' }), el('th', { scope: 'col', text: 'Break-even' }))),
         el('tbody', null, tierRows)),
-      el('p', { class: 'sub', text: 'Time and break-even do not change with the deposit: the same hours are spent. The snapshot gives no rule that a larger deposit earns a larger share, so a bigger deposit locks more capital for the same time — the plan sizes the recommended deposit above, and these tiers show the cost, not a larger reward.' })));
-    dialog.appendChild(el('section', { class: 'detail-section' },
+      el('p', { class: 'sub', text: 'Time does not change with the deposit; break-even moves only where the plan swaps (the 0.25% pool fee on a bigger deposit). The snapshot gives no rule that a larger deposit earns a larger share, so a bigger deposit locks more capital for the same time — the plan sizes the recommended deposit above, and these tiers show the cost, not a larger reward.' })));
+    dialog.appendChild(el('section', { class: 'detail-section', id: 'farm-plan' },
       el('h3', { text: 'Farm plan' }),
       el('ol', { class: 'steps' }, steps.map(function (s) {
         var at = s.indexOf(' Cost: ');
@@ -380,6 +429,15 @@
       }))));
     if (typeof dialog.showModal === 'function') { if (!dialog.open) dialog.showModal(); }
     else dialog.setAttribute('open', '');
+    // Deep link: #p=<slug>&view=plan opens the detail scrolled to the farm plan.
+    if (state.view === 'plan') {
+      var plan = document.getElementById('farm-plan');
+      if (plan) plan.scrollIntoView();
+    }
+  }
+  function footer() {
+    return el('footer', { class: 'foot' },
+      el('span', { text: 'Board sha256 ' + (DATA.board_sha256 || 'n/a').slice(0, 12) + ' · snapshot ' + DATA.as_of + ' · ' + DATA.model_version + ' model · deterministic build: two runs write identical bytes' }));
   }
   function render() {
     app.textContent = '';
@@ -390,6 +448,7 @@
     shell.appendChild(controls());
     shell.appendChild(state.tab === 'pre-token' ? boardTable() : liveTable());
     if (state.tab === 'pre-token') shell.appendChild(modelPanel());
+    shell.appendChild(footer());
     app.appendChild(shell);
     app.setAttribute('aria-busy', 'false');
     if (!dialog.isConnected) app.appendChild(dialog);
