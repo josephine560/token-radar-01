@@ -1,10 +1,23 @@
-// Token Radar, model radar-5: the implied value is fitted from the snapshot itself.
-// Radar-5 keeps radar-3's value curve, odds and bootstrap unchanged; it reworks
-// the board rule, the farm economics and the dashboard (see below). The board
-// rule now applies the snapshot's own watchlist exclusion (bridged, staked,
-// wrapped and exchange products) without the TVL floor, so the board ranks
-// 198 pre-token protocols: the 40 watchlist plus 158 early ones, 20 of them
-// above the floor radar-4 cut off.
+// Token Radar, model radar-6: the implied value is fitted from the snapshot itself.
+// Radar-6 keeps radar-3's value curve, odds and bootstrap unchanged — radar-6
+// re-tested 16 more principled variants offline (same n=128, leave-one-out
+// plus walk-forward): log-age, LAD median regression, Poisson and Gamma GLMs,
+// ridge shrinkage toward -0.5 and toward 0, separate Lending/Dexs fits,
+// growth-weighted fits, isotonic, trimmed OLS, TVL-rank percentile, log chain
+// count, and TVL-quintile bin medians. None beats the kept curve on BOTH
+// leave-one-out and walk-forward (six win walk-forward only; the walk-forward
+// test set is systematically easier for flatter curves), so the curve stays.
+// The five closest new rejections are now computed at run time and shown on
+// the dashboard (log-age 1.23, LAD 1.30, trimmed 1.26, quintile bins 1.52,
+// isotonic 1.38), alongside the earlier ones. Radar-6 reworks the farm
+// economics and the dashboard (see below): the net-of-costs slice, the
+// "farm next" lede, what-if controls, the evidence strip, and 25 more
+// researched chain fees, so only 8 of the 198 rows still sit on chains with
+// no reliable fee figure. The board rule (radar-5) still applies the
+// snapshot's own watchlist exclusion (bridged, staked, wrapped and exchange
+// products) without the TVL floor, so the board ranks 198 pre-token
+// protocols: the 40 watchlist plus 158 early ones, 20 of them above the
+// floor radar-4 cut off.
 //
 // A protocol's token, if it ever issues one, is valued by the market the snapshot
 // already records. 128 of the 416 token-recorded protocols carry a positive market
@@ -74,14 +87,27 @@
 // row can promise dollars per farmer. The farm verdict ranks effort instead:
 // FARM is the top quarter by implied value with peer odds at or above 0.35
 // (only the youngest bucket, under six months, falls below that line),
-// THIN is the top half or odds at or above 0.55, the rest is SKIP. Radar-5
-// makes the relative-priority case crisp without inventing a payout: each row
-// carries implied value per $1 of capital locked and per hour spent (a priority
-// index, not a return — the implied value is the whole protocol's token value,
-// not a per-farmer share), an efficiency rank beside its absolute rank, the
-// three deposit tiers ($50 / $100 / $250) with what each costs to lock, and a
-// "what would flip this verdict" line computed from the rank-50 and rank-99
-// implied-value lines (the quartile lines at the 198-row board size).
+// THIN is the top half or odds at or above 0.55, the rest is SKIP. Radar-6
+// adds a stated-scenario net beside the priority indexes, so the board can
+// answer "what to farm first" in dollars without inventing a payout: the
+// scenario says the airdrop pool is 7% of the implied value, the farmed
+// capital is 1% of TVL, and your slice is proportional to your deposit
+// within the farmed capital. Net is that slice minus all the plan's costs
+// (time at $25/hour, network fees, pool fee); net at the band's low end
+// uses the 10th-percentile implied value, and a row is ROBUST when even
+// that low-end net is positive. Every assumption is printed on the page
+// and the dashboard's what-if controls re-price every net live — change
+// the deposit or the drop share and the column, the lede and the detail
+// drawer all move. The scenario is a yardstick for comparing rows, not a
+// forecast of what any farmer will receive: the snapshot gives no rule
+// that a larger deposit earns a larger share, and no row promises dollars.
+// Each row also carries implied value per $1 of capital locked and per hour
+// spent (a priority index, not a return — the implied value is the whole
+// protocol's token value, not a per-farmer share), an efficiency rank beside
+// its absolute rank, the three deposit tiers ($50 / $100 / $250) with what
+// each costs to lock and what each nets, and a "what would flip this
+// verdict" line computed from the rank-50 and rank-99 implied-value lines
+// (the quartile lines at the 198-row board size).
 // Break-even is time cost — hours x $25/hour, an assumption the reader can
 // change on the dashboard — plus the plan's network fees plus the 0.25% pool
 // fee where a plan swaps. The snapshot carries no fee, so the fees come from
@@ -91,7 +117,7 @@
 // GemWallet trackers, Monad docs), with the conservative high end used as the
 // per-transaction figure and each chain marked measured or estimate. A plan is
 // 3 + ceil(holdDays/7) transactions (approve, setup, one a week, claim), so
-// the network fee is that count times the per-transaction figure; 45 of the
+// the network fee is that count times the per-transaction figure; 8 of the
 // 198 rows sit on chains with no reliable public figure, and for those the
 // break-even is time cost only and the row is flagged fee_unknown.
 //
@@ -142,6 +168,19 @@ export interface Validation {
   /** Theil-Sen median-slope fit. */
   theil_sen_loo: number;
   imputed_curve_loo: number;
+  /** Radar-6 rejections, each on the same leave-one-out footing. */
+  log_age_loo: number;
+  /** LAD / median regression (IRLS). */
+  lad_loo: number;
+  /** OLS after dropping the 5% tails of y in each fold. */
+  trimmed_loo: number;
+  /** TVL-quintile bin medians. */
+  quintile_loo: number;
+  /** Isotonic (monotone-decreasing, PAVA) fit of y on log TVL. */
+  isotonic_loo: number;
+  /** Top-20 overlap of the kept board under each ablated variant: how many
+   * of the kept top 20 each simpler model keeps. Computed in buildRadar. */
+  ablation_top20: Array<{ label: string; kept: number }>;
   odds_cv_brier: number;
   odds_cv_brier_no_null: number;
   odds_cv_logloss: number;
@@ -182,7 +221,7 @@ export interface Coverage {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-5';
+export const MODEL_VERSION = 'radar-6';
 
 /** Radar-5 ranks every rankable pre-token protocol (198 of the 342 pre-token
  * ones: the 40 watchlist rows plus 20 at or above the floor the watchlist
@@ -262,6 +301,34 @@ export const CHAIN_FEES: ChainFee[] = [
   { chain: 'Blast', swap_lo_usd: 0.025, swap_hi_usd: 0.025, per_tx_usd: 0.025, quality: 'measured', basis: 'L2Fees 30-day median' },
   { chain: 'Monad', swap_lo_usd: 0.0005, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'Monad docs gas-pricing page; GemWallet tracker' },
   { chain: 'Hyperliquid L1', swap_lo_usd: 0.033, swap_hi_usd: 0.062, per_tx_usd: 0.062, quality: 'measured', basis: 'HyperEVM gas (GemWallet tracker); HyperCore actions may differ' },
+  // Radar-6 additions, researched 2026-11-23 (see README for sources). Seven
+  // chains still have no reliable figure and stay absent: RISE, BSquared,
+  // Bittensor, Pharos, Mezo, XION, Canton.
+  { chain: 'Flare', swap_lo_usd: 0.0001, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'estimate', basis: 'derived from gas price x gas (FIP.16 base fee 500 gwei, FLR ~$0.006); FAssets txs cost ~10x a plain transfer' },
+  { chain: 'Ink', swap_lo_usd: 0.001, swap_hi_usd: 0.005, per_tx_usd: 0.005, quality: 'estimate', basis: 'growthepie median tx + OP-stack swap/transfer ratio (~10x); no Ink-specific swap median published' },
+  { chain: 'Provenance', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.15, quality: 'estimate', basis: 'no DEX swap on this Cosmos chain; per-tx uses the $0.15/message default (flat USD fee model, transfer $0.025)' },
+  { chain: 'Plasma', swap_lo_usd: 0.00001, swap_hi_usd: 0.0001, per_tx_usd: 0.001, quality: 'measured', basis: 'transfer 60,924 gas ~$0.000006 at $0.101/XPL; USDT0 transfers free via relayer, swaps/approvals are not' },
+  { chain: 'Arc', swap_lo_usd: 0.003, swap_hi_usd: 0.045, per_tx_usd: 0.05, quality: 'estimate', basis: 'RPC read: base fee at 20 Gwei floor, transfer 0.00042 USDC; gas paid in USDC, base fee can rise 1000x' },
+  { chain: 'Ripple', swap_lo_usd: 0.000011, swap_hi_usd: 0.000011, per_tx_usd: 0.001, quality: 'measured', basis: 'XRPL DEX fee 12 drops = 0.000012 XRP ~$0.000011/tx; per-tx uses $0.001 as a conservative floor. The XRPL EVM sidechain is a separate chain' },
+  { chain: 'Noble', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.1, quality: 'estimate', basis: 'no DEX on Noble; per-tx uses the IBC/transfer cost (USDC-denominated gas, 0.01-0.1 USDC cross-chain)' },
+  { chain: 'Manta', swap_lo_usd: 0.0009, swap_hi_usd: 0.0017, per_tx_usd: 0.002, quality: 'measured', basis: 'GemWallet tracker (swap $0.00087 normal / $0.0017 fast); gas paid in ETH, not MANTA' },
+  { chain: 'World Chain', swap_lo_usd: 0.001, swap_hi_usd: 0.005, per_tx_usd: 0.005, quality: 'estimate', basis: 'growthepie median tx + OP-stack ratio; World Money app may charge a 1% platform fee on swaps in some jurisdictions (app fee, not network fee)' },
+  { chain: 'Kava', swap_lo_usd: 0.0001, swap_hi_usd: 0.0001, per_tx_usd: 0.001, quality: 'measured', basis: 'tracker read Nov 18 2026: 1.01 Gwei, swap 175,000 gas <$0.0001, KAVA $0.0286' },
+  { chain: 'Morph', swap_lo_usd: 0.01, swap_hi_usd: 0.03, per_tx_usd: 0.03, quality: 'estimate', basis: 'L2 analogy (Base $0.018, Arbitrum $0.024, OP $0.031 medians); L1 data fee is a second component' },
+  { chain: 'RSK', swap_lo_usd: 0.17, swap_hi_usd: 0.25, per_tx_usd: 0.25, quality: 'measured', basis: 'swap 90k-130k gas at ~0.026 gwei, RBTC ~$74k; getting RBTC costs: PowPeg peg-in ~17h, Flyover ~20 min for a fee' },
+  { chain: 'Ronin', swap_lo_usd: 0.0003, swap_hi_usd: 0.0006, per_tx_usd: 0.001, quality: 'measured', basis: 'explorer swaps Nov 2026: 0.006-0.011 RON at flat ~21 gwei, RON ~$0.05' },
+  { chain: 'Proton', swap_lo_usd: 0, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'zero network fee (resource model: CPU/NET/RAM allocation); per-tx uses $0.001 as a floor' },
+  { chain: 'Tempo', swap_lo_usd: 0.0001, swap_hi_usd: 0.0018, per_tx_usd: 0.002, quality: 'measured', basis: 'docs fee spec: swap ~150k gas, at most $0.0018; fee paid in any USD TIP-20 stablecoin; Fee AMM charges 0.3% when the stablecoin differs' },
+  { chain: 'Reya Network', swap_lo_usd: 0.00001, swap_hi_usd: 0.002, per_tx_usd: 0.002, quality: 'measured', basis: 'explorer swap txs: 0.000000021-0.00000071 ETH at 0.0001 gwei; perps L2 marketed as gas-free, fee is near-zero not zero' },
+  { chain: 'Starknet', swap_lo_usd: 0.1, swap_hi_usd: 0.35, per_tx_usd: 0.35, quality: 'estimate', basis: 'L2Fees.info via Oct 2026 summary: transfer $0.02-0.08, swap $0.10-0.35; account abstraction makes swaps much heavier than average txs' },
+  { chain: 'Strato', swap_lo_usd: 0.01, swap_hi_usd: 0.01, per_tx_usd: 0.01, quality: 'measured', basis: 'flat 0.01 USDST per tx (or 1 voucher); fee charged even if the tx reverts' },
+  { chain: 'Stable', swap_lo_usd: 0.0001, swap_hi_usd: 0.0002, per_tx_usd: 0.001, quality: 'measured', basis: 'RPC read: gas 1.125 Gwei USDT0; USDT0 transfers gas-free, contract calls pay small USDT0 fees' },
+  { chain: 'Klaytn', swap_lo_usd: 0.0002, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'openchainbench live Nov 22 2026 + kaiascan swap txs; fixed 27.5 Gkei gas price, KAIA ~$0.03 (Kaia = Klaytn + Finschia)' },
+  { chain: 'Bifrost Network', swap_lo_usd: 0.006, swap_hi_usd: 0.006, per_tx_usd: 0.01, quality: 'estimate', basis: 'project-published average $0.006 (gas tracker ~1000 Gwei, BFC ~$0.018), not an independent tracker median' },
+  { chain: 'Qubic', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.005, quality: 'estimate', basis: 'no conventional DEX swap; QUBIC transfers are feeless by design, so per-tx uses the $0.005 transfer-cost proxy' },
+  { chain: 'Stacks', swap_lo_usd: 0.03, swap_hi_usd: 0.79, per_tx_usd: 0.8, quality: 'measured', basis: 'explorer swap-router txs Oct-Nov 2026: simple sBTC/STX swaps $0.03, multi-hop DLMM router swaps $0.56-0.79; fee is sender-chosen' },
+  { chain: 'Fluent', swap_lo_usd: 0.0003, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'median fees ~$0.0005 (Aug 2026); DefiLlama Nov 22: $0.88 fees / 3,106 txs ~$0.00028/tx; gas paid in ETH' },
+  { chain: 'Plume Mainnet', swap_lo_usd: 0.002, swap_hi_usd: 0.02, per_tx_usd: 0.02, quality: 'measured', basis: 'explorer swap txs Nov 15-16 2026: 0.36-0.40 PLUME, gas price flat 1,000 Gwei, PLUME ~$0.026; many txs Sponsored' },
 ];
 
 /** The fee figure for a chain, or null when no reliable public figure exists. */
@@ -293,6 +360,26 @@ export interface DepositTier {
   capital_usd: number;
   implied_per_capital_usd: number;
   break_even_usd: number;
+  /** The stated-scenario net at this deposit size (slice minus all costs). */
+  net_usd: number;
+}
+
+/**
+ * The stated scenario behind every net figure (radar-6). The snapshot
+ * carries no airdrop share, so the net is a yardstick, not a forecast: the
+ * airdrop pool is 7% of the implied value, the farmed capital is 1% of
+ * TVL, and your slice is proportional to your deposit within the farmed
+ * capital. Net is the slice minus all the plan's costs. The dashboard
+ * prints these assumptions and lets the reader change the deposit and the
+ * drop share, re-pricing every net live.
+ */
+export const DROP_SHARE = 0.07;
+export const FARMED_SHARE_OF_TVL = 0.01;
+
+/** A row's slice of the drop pool at a deposit, from its implied value and TVL. */
+export function sliceFor(impliedValueUsd: number, capitalUsd: number, tvlUsd: number, dropShare: number = DROP_SHARE): number {
+  if (tvlUsd <= 0) return 0;
+  return (impliedValueUsd * dropShare * capitalUsd) / (FARMED_SHARE_OF_TVL * tvlUsd);
 }
 
 /** One row of board.json: the ranked board's row. */
@@ -328,6 +415,21 @@ export interface BoardRow {
   /** This row's rank by implied value per $1 locked, and by implied value per hour. */
   eff_rank_capital: number;
   eff_rank_hour: number;
+  /** Stated-scenario net (radar-6): the slice of a 7%-of-implied drop pool,
+   * proportional to the deposit within farmed capital assumed at 1% of TVL,
+   * minus all the plan's costs. A yardstick for comparing rows, not a payout. */
+  slice_usd: number;
+  net_usd: number;
+  net_per_hour_usd: number;
+  /** The same slice and net at the band's 10th-percentile implied value. */
+  slice_low_usd: number;
+  net_low_usd: number;
+  /** True when even the low-end net is positive: the row pays under the
+   * stated scenario at the bottom of its own band. */
+  robust: boolean;
+  /** This row's rank by net dollars and by net dollars per hour. */
+  eff_rank_net: number;
+  eff_rank_net_hour: number;
   /** What would move this row across a verdict line, from the rank-50 and rank-100 implied values. */
   flip_condition: string;
   /** The $50 / $100 / $250 deposit sizes, each with its own per-$1 index. */
@@ -377,6 +479,14 @@ export interface RadarRow {
   implied_per_hour_usd: number;
   eff_rank_capital: number;
   eff_rank_hour: number;
+  slice_usd: number;
+  net_usd: number;
+  net_per_hour_usd: number;
+  slice_low_usd: number;
+  net_low_usd: number;
+  robust: boolean;
+  eff_rank_net: number;
+  eff_rank_net_hour: number;
   flip_condition: string;
   deposit_tiers: DepositTier[];
   fee_chain: string;
@@ -797,6 +907,100 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
   }
   const imputedCurveLoo = median(imputedErrs);
 
+  // Radar-6 rejected candidates, each on the same leave-one-out footing.
+  // Log-age term: log TVL plus log days with no token (unrecorded age counts
+  // as 1000 days). The age coefficient is small and the median error gets
+  // worse, confirming the earlier bucketed age rejection.
+  const rowsLogAge = live.map((p) => {
+    const age = ageDays(snapshot.as_of, p.listed_at);
+    return [1, Math.log(p.tvl_usd), Math.log(Math.max(1, age ?? 1000))];
+  });
+  const logAgeLoo = looFor(rowsLogAge);
+  // LAD / median regression by iteratively reweighted least squares: weights
+  // 1/max(|residual|, 1e-6), refit until the coefficients settle. The median
+  // fit is genuinely different from Theil-Sen and still worse.
+  const ladLoo = (() => {
+    const errs: number[] = [];
+    for (let i = 0; i < live.length; i++) {
+      const tr = rows2.filter((_, j) => j !== i);
+      const ty = y.filter((_, j) => j !== i);
+      let c = ols(tr, ty);
+      for (let iter = 0; iter < 50; iter++) {
+        const w = ty.map((v, j) => 1 / Math.max(1e-6, Math.abs(v - dot(c, tr[j]!))));
+        const k = 2;
+        const a: number[][] = Array.from({ length: k }, () => new Array<number>(k).fill(0));
+        const b: number[] = new Array<number>(k).fill(0);
+        for (let t = 0; t < tr.length; t++) {
+          for (let ii = 0; ii < k; ii++) {
+            b[ii] = b[ii]! + w[t]! * tr[t]![ii]! * ty[t]!;
+            for (let jj = 0; jj < k; jj++) a[ii]![jj] = a[ii]![jj]! + w[t]! * tr[t]![ii]! * tr[t]![jj]!;
+          }
+        }
+        const c2 = solveLinear(a, b);
+        const shift = Math.max(Math.abs(c2[0]! - c[0]!), Math.abs(c2[1]! - c[1]!));
+        c = c2;
+        if (shift < 1e-8) break;
+      }
+      errs.push(Math.abs(y[i]! - dot(c, rows2[i]!)));
+    }
+    return median(errs);
+  })();
+  // Trimmed OLS: drop the 5% tails of y in each training fold, fit, predict
+  // the held-out row's untrimmed y. Trimming the tails is worse than
+  // winsorizing them — the heavy tails carry signal.
+  const trimmedErrs: number[] = [];
+  for (let i = 0; i < live.length; i++) {
+    const tr = rows2.filter((_, j) => j !== i);
+    const ty = y.filter((_, j) => j !== i);
+    const lo = quantile(ty, 0.05);
+    const hi = quantile(ty, 0.95);
+    const keep = ty.map((v, j) => (v >= lo && v <= hi ? j : -1)).filter((j) => j >= 0);
+    const c = ols(keep.map((j) => tr[j]!), keep.map((j) => ty[j]!));
+    trimmedErrs.push(Math.abs(y[i]! - dot(c, rows2[i]!)));
+  }
+  const trimmedLoo = median(trimmedErrs);
+  // TVL-quintile bin medians: no curve at all, just the median ratio in the
+  // protocol's TVL fifth. Coarser than the curve and worse.
+  const quintileErrs: number[] = [];
+  for (let i = 0; i < live.length; i++) {
+    const tr = rows2.filter((_, j) => j !== i);
+    const ty = y.filter((_, j) => j !== i);
+    const xs = tr.map((r) => r[1]!);
+    const cuts = [0.2, 0.4, 0.6, 0.8].map((q) => quantile(xs, q));
+    const binOf = (v: number): number => cuts.filter((c) => v > c).length;
+    const bin = binOf(rows2[i]![1]!);
+    const inBin = ty.filter((_, j) => binOf(tr[j]![1]!) === bin);
+    quintileErrs.push(Math.abs(y[i]! - median(inBin.length > 0 ? inBin : ty)));
+  }
+  const quintileLoo = median(quintileErrs);
+  // Isotonic fit: a monotone-decreasing step function of y on log TVL
+  // (pool-adjacent-violators). Flexible where the curve is rigid, and worse.
+  const isotonicErrs: number[] = [];
+  for (let i = 0; i < live.length; i++) {
+    const tr = rows2.filter((_, j) => j !== i);
+    const ty = y.filter((_, j) => j !== i);
+    const pts = tr.map((r, j) => ({ x: r[1]!, y: ty[j]! })).sort((a, b) => a.x - b.x);
+    type Block = { lo: number; hi: number; sum: number; n: number };
+    const blocks: Block[] = [];
+    for (const p of pts) {
+      blocks.push({ lo: p.x, hi: p.x, sum: p.y, n: 1 });
+      while (blocks.length >= 2) {
+        const last = blocks[blocks.length - 1]!;
+        const prev = blocks[blocks.length - 2]!;
+        if (prev.sum / prev.n >= last.sum / last.n) break;
+        prev.hi = last.hi;
+        prev.sum += last.sum;
+        prev.n += last.n;
+        blocks.pop();
+      }
+    }
+    const xv = rows2[i]![1]!;
+    let pred = blocks[0]!.sum / blocks[0]!.n;
+    for (const b of blocks) if (xv >= b.lo) pred = b.sum / b.n;
+    isotonicErrs.push(Math.abs(y[i]! - pred));
+  }
+  const isotonicLoo = median(isotonicErrs);
+
   // Walk-forward: fit on protocols listed before 2025-06-01, test on the rest.
   const trainIdx = live.map((p, i) => (p.listed_at !== null && p.listed_at < '2025-06-01' ? i : -1)).filter((i) => i >= 0);
   const testIdx = live.map((p, i) => (p.listed_at !== null && p.listed_at >= '2025-06-01' ? i : -1)).filter((i) => i >= 0);
@@ -875,6 +1079,12 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
       winsorized_loo: winsorizedLoo,
       theil_sen_loo: theilSenLoo,
       imputed_curve_loo: imputedCurveLoo,
+      log_age_loo: logAgeLoo,
+      lad_loo: ladLoo,
+      trimmed_loo: trimmedLoo,
+      quintile_loo: quintileLoo,
+      isotonic_loo: isotonicLoo,
+      ablation_top20: [],
       odds_cv_brier: oddsCv.brier,
       odds_cv_brier_no_null: oddsCv.brierNoNull,
       odds_cv_logloss: oddsCv.logloss,
@@ -961,9 +1171,9 @@ export function txCountFor(holdDays: number): number {
   return 3 + Math.ceil(holdDays / 7);
 }
 
-/** A dollar figure, trailing zeros trimmed ($4, $0.25, $0.0005). */
+/** A dollar figure, trailing zeros trimmed ($4, $0.25, $0.0005, $0.000011). */
 export function money2(n: number): string {
-  const digits = n >= 1 ? 2 : n >= 0.01 ? 3 : 4;
+  const digits = n >= 1 ? 2 : n >= 0.01 ? 3 : n >= 0.0001 ? 4 : 6;
   const s = n.toFixed(digits).replace(/\.?0+$/, '');
   return `$${s === '' || s === '-' ? '0' : s}`;
 }
@@ -973,7 +1183,15 @@ export function money2(n: number): string {
  * the protocol's own record (category, chains, TVL, age), never from a hand-written list of names.
  * Network fees come from the researched November-2026 table, not from the snapshot (which carries
  * no fee): each step quotes the chain's figure, and a chain with no reliable figure says so
- * instead of quoting a guess.
+ * instead of quoting a guess. Radar-6 researched 25 more chains (Flare, Ink,
+ * Provenance, Plasma, Arc, Ripple, Noble, Manta, World Chain, Kava, Morph, RSK,
+ * Ronin, Proton, Tempo, Reya, Starknet, Strato, Stable, Klaytn, Bifrost
+ * Network, Qubic, Stacks, Fluent, Plume Mainnet), so only 8 rows still sit
+ * on chains with no reliable figure (RISE, BSquared, Bittensor, Pharos,
+ * Mezo, XION, Canton). Two of the new chains are expensive enough to matter:
+ * RSK $0.25 and Stacks $0.80 per transaction. Two have no DEX at all (Noble,
+ * and Provenance's Cosmos-side settlement), so their figures are transfer
+ * costs, not swap medians, and the farm steps say so.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
@@ -1107,6 +1325,16 @@ export function buildBoard(
     const breakEven = Math.round(totalCost);
     const verdict: 'farm' | 'thin' | 'skip' =
       i + 1 <= farmRank && s.odds >= 0.35 ? 'farm' : i + 1 <= thinRank || s.odds >= 0.55 ? 'thin' : 'skip';
+    const impliedLow = Math.max(1, Math.round(quantile(impliedSamples[i]!, 0.1)));
+    const impliedHigh = Math.max(1, Math.round(quantile(impliedSamples[i]!, 0.9)));
+    // Stated-scenario net: the slice of a 7% drop pool, proportional to the
+    // deposit within farmed capital assumed at 1% of TVL, minus all the
+    // plan's costs. The low-end net uses the band's 10th percentile.
+    const slice = sliceFor(s.implied, capital, s.p.tvl_usd);
+    const net = Math.round((slice - totalCost) * 100) / 100;
+    const netPerHour = Math.round((net / timeHours) * 100) / 100;
+    const sliceLow = sliceFor(impliedLow, capital, s.p.tvl_usd);
+    const netLow = Math.round((sliceLow - totalCost) * 100) / 100;
     return {
       rank: i + 1,
       slug: s.p.slug,
@@ -1124,8 +1352,8 @@ export function buildBoard(
       implied_value_usd: s.implied,
       fitted_value_usd: Math.max(1, Math.round(s.fitted)),
       odds: Math.round(s.odds * 1000) / 1000,
-      implied_low_usd: Math.max(1, Math.round(quantile(impliedSamples[i]!, 0.1))),
-      implied_high_usd: Math.max(1, Math.round(quantile(impliedSamples[i]!, 0.9))),
+      implied_low_usd: impliedLow,
+      implied_high_usd: impliedHigh,
       rank_low: Math.round(quantile(rankSamples[i]!, 0.1)),
       rank_high: Math.round(quantile(rankSamples[i]!, 0.9)),
       verdict,
@@ -1134,6 +1362,12 @@ export function buildBoard(
       break_even_usd: breakEven,
       implied_per_capital_usd: Math.round(s.implied / capital),
       implied_per_hour_usd: Math.round(s.implied / timeHours),
+      slice_usd: Math.round(slice * 100) / 100,
+      net_usd: net,
+      net_per_hour_usd: netPerHour,
+      slice_low_usd: Math.round(sliceLow * 100) / 100,
+      net_low_usd: netLow,
+      robust: netLow > 0,
       farm_steps: farmSteps(s.p, s.age).map(stepText),
       fee_chain: chain,
       tx_count: txs,
@@ -1159,6 +1393,8 @@ export function buildBoard(
   };
   const effCap = rankBy('implied_per_capital_usd');
   const effHr = rankBy('implied_per_hour_usd');
+  const effNet = rankBy('net_usd');
+  const effNetHr = rankBy('net_per_hour_usd');
 
   return base.map((r) => {
     const flip =
@@ -1171,18 +1407,23 @@ export function buildBoard(
       ...r,
       eff_rank_capital: effCap.get(r.slug)!,
       eff_rank_hour: effHr.get(r.slug)!,
+      eff_rank_net: effNet.get(r.slug)!,
+      eff_rank_net_hour: effNetHr.get(r.slug)!,
       flip_condition: flip,
       // A bigger deposit locks more capital for the same time, and on a
       // swap leg it also pays a bigger pool fee (0.25% of the deposit), so
       // the tier's break-even moves with the deposit where the plan swaps.
+      // The tier's net uses the same stated scenario at that deposit size.
       deposit_tiers: DEPOSIT_TIERS_USD.map((capital) => {
         const c = (r.category ?? '').toLowerCase();
         const swaps = c.includes('dex') || c.includes('yield') || c.includes('leveraged farm');
         const tierPool = swaps ? Math.round(capital * POOL_FEE_RATE * 100) / 100 : 0;
+        const tierCost = r.time_hours * TIME_VALUE_USD_PER_HOUR + (r.network_fee_usd ?? 0) + tierPool;
         return {
           capital_usd: capital,
           implied_per_capital_usd: Math.round(r.implied_value_usd / capital),
-          break_even_usd: Math.round(r.time_hours * TIME_VALUE_USD_PER_HOUR + (r.network_fee_usd ?? 0) + tierPool),
+          break_even_usd: Math.round(tierCost),
+          net_usd: Math.round((sliceFor(r.implied_value_usd, capital, r.tvl_usd) - tierCost) * 100) / 100,
         };
       }),
     };
@@ -1236,6 +1477,14 @@ export function radarRow(row: BoardRow): RadarRow {
     implied_per_hour_usd: row.implied_per_hour_usd,
     eff_rank_capital: row.eff_rank_capital,
     eff_rank_hour: row.eff_rank_hour,
+    slice_usd: row.slice_usd,
+    net_usd: row.net_usd,
+    net_per_hour_usd: row.net_per_hour_usd,
+    slice_low_usd: row.slice_low_usd,
+    net_low_usd: row.net_low_usd,
+    robust: row.robust,
+    eff_rank_net: row.eff_rank_net,
+    eff_rank_net_hour: row.eff_rank_net_hour,
     flip_condition: row.flip_condition,
     deposit_tiers: row.deposit_tiers,
     fee_chain: row.fee_chain,
@@ -1253,10 +1502,53 @@ export function radarRow(row: BoardRow): RadarRow {
   };
 }
 
+/** Top-20 overlap of the kept board under each ablated variant: how many of
+ * the kept top 20 each simpler model keeps. The ablations re-score the same
+ * ranked rows: fitted value only (no odds), a flat 0.25x TVL multiple, the
+ * global-median ratio, one odds rate for every age, and the winsorized curve.
+ * A top 20 that survives ablation is a ranking the model does not invent. */
+export function ablationTop20(
+  snapshot: Snapshot,
+  fit: { validation: Validation; oddsTable: OddsBucket[]; globalOdds: number },
+  board: BoardRow[],
+): Array<{ label: string; kept: number }> {
+  const { validation, globalOdds } = fit;
+  const keptTop = new Set(board.slice(0, 20).map((r) => r.slug));
+  const live = snapshot.protocols.filter((p) => p.mcap_usd !== null && p.mcap_usd > 0);
+  const ys = live.map((p) => Math.log(p.mcap_usd! / p.tvl_usd));
+  const globalMed = median(ys);
+  const q05 = quantile(ys, 0.05);
+  const q95 = quantile(ys, 0.95);
+  const clipped = ys.map((v) => Math.min(q95, Math.max(q05, v)));
+  const winsCoef = ols(
+    live.map((p) => [1, Math.log(p.tvl_usd)]),
+    clipped,
+  );
+  const bySlug = new Map(board.map((r) => [r.slug, r]));
+  const variants: Array<{ label: string; value: (r: BoardRow) => number }> = [
+    { label: 'fitted only, no odds', value: (r) => r.fitted_value_usd },
+    { label: 'flat 0.25x TVL', value: (r) => r.tvl_usd * 0.25 * r.odds },
+    { label: 'global-median ratio', value: (r) => r.tvl_usd * Math.exp(globalMed) * r.odds },
+    { label: 'one odds rate, no age bucket', value: (r) => r.fitted_value_usd * globalOdds },
+    {
+      label: 'winsorized curve',
+      value: (r) => Math.max(1, Math.round(fittedMcap(r.tvl_usd, winsCoef[0]!, winsCoef[1]!) * r.odds)),
+    },
+  ];
+  return variants.map(({ label, value }) => {
+    const top = [...board]
+      .sort((a, b) => value(b) - value(a) || (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0))
+      .slice(0, 20)
+      .filter((r) => keptTop.has(r.slug)).length;
+    return { label, kept: top };
+  });
+}
+
 /** Everything the dashboard renders, from the snapshot. */
 export function buildRadar(snapshot: Snapshot): { board: BoardRow[]; radar: RadarData } {
   const fit = fitAndValidate(snapshot);
   const board = buildBoard(snapshot, fit);
+  fit.validation.ablation_top20 = ablationTop20(snapshot, fit, board);
   const live = liveRows(snapshot);
   const earlyRows = board.filter((r) => !snapshot.watchlist.includes(r.slug));
   const early = earlyRows.length;
