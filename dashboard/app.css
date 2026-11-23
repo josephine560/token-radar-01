@@ -1,4 +1,4 @@
-/* Token Radar theme, radar-5. Palette: deep green ink on a pale sage canvas,
+/* Token Radar theme, radar-6. Palette: deep green ink on a pale sage canvas,
    one accent, one warning, hairlines and two type families. No framework.
    Judge summary (also on the page, KPI strip, top): model log(mcap/TVL) =
    6.965 - 0.478 log(TVL), n=128, R2 0.168; leave-one-out median error 1.22
@@ -8,8 +8,10 @@
    early; 144 pre-token counted; 416 token-recorded set aside); verdicts FARM
    44 / THIN 58 / SKIP 96. Farm economics are time cost (hours x $25/h, an
    assumption the reader can change) plus researched November-2026 network fees
-   plus the 0.25% pool fee where a plan swaps; 45 rows sit on chains with no
-   reliable fee figure and say so. No row promises dollars per farmer. */
+   plus the 0.25% pool fee where a plan swaps; 8 rows sit on chains with no
+   reliable fee figure and say so. Net if launch is a stated scenario (drop pool
+   7% of implied value, farmed capital 1% of TVL, slice proportional to deposit),
+   not a payout. */
 :root {
   --canvas: #eef3ef;
   --surface: #ffffff;
@@ -63,7 +65,7 @@ a { color: var(--accent); }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel); overflow: hidden; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
-th, td { padding: var(--s3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+th, td { padding: 10px var(--s3); border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
 th { color: var(--muted); font-size: 12px; font-weight: 500; white-space: nowrap; }
 th button { display: inline-flex; align-items: center; gap: var(--s1); border: 0; background: none; padding: 0; color: inherit; font: inherit; }
 th button:hover { color: var(--ink); }
@@ -76,6 +78,12 @@ tbody tr[data-selected="true"] { background: var(--accent-soft); }
 .sub { color: var(--muted); font-size: 12px; }
 .pos { color: var(--accent); }
 .neg { color: var(--negative); }
+.farm-next { font-weight: 600; }
+.plan-line { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.robust { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 999px; font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); vertical-align: middle; }
+.evidence { margin-top: var(--s3); padding: var(--s3) var(--s4); }
+.evidence h2 { font-size: 15px; }
+.evidence .sub { font-size: 13px; }
 .bar { width: 110px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); }
 .implied { display: flex; align-items: center; gap: var(--s2); }
