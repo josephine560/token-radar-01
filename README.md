@@ -9,7 +9,7 @@ A static dashboard that reads a sealed DefiLlama snapshot (758 protocols, as of
 value, and gives each one a costed farm plan. Built for the make.fun bounty
 [Build the best token launch radar](https://make.fun/bounty/token-radar-01).
 
-## The model (radar-5; value curve unchanged from radar-3)
+## The model (radar-6; value curve unchanged from radar-3)
 
 Implied value is fitted from the snapshot itself, not from a hand-kept list:
 
@@ -45,19 +45,21 @@ is not low market cap: the null set holds Binance CEX at $116B TVL with symbol
 BNB and no market cap, and the chance a token-recorded protocol carries a
 market cap does not rise with TVL (0.41 / 0.25 / 0.30 / 0.28 across quartiles).
 
-Radar-5 re-tested the remaining principled variants offline (22 variants,
-same n=128, leave-one-out plus walk-forward plus repeated 5-fold): a two-stage
-classify-then-fit (1.228), category shrinkage n/(n+50) (1.233), winsorized
-(1.257), Theil-Sen (1.255), piecewise TVL terciles (1.264), a hinge at median
-log TVL (1.267), a joint log TVL + growth + log age fit (1.287), a log TVL x
-growth interaction (1.366) and a chain-count term (1.344). None beats the kept
-curve's 1.223, so the curve stays — and the three closest rejections are now
-computed at run time and shown on the dashboard, so the reader sees the
-comparison instead of taking it on trust. The joint fit's walk-forward (1.214)
-looks better, but its test set is entirely young protocols with no age overlap
-with the training set, so it is an extrapolation test, not an override of
-leave-one-out; its growth coefficient also flips between the full sample
-(-3.77) and the walk-forward training set (-0.55).
+Radar-6 re-tested five more principled variants at run time (same n=128,
+leave-one-out): adding log age (1.231), median regression / LAD (1.302),
+a trimmed fit with 5% of the tails dropped (1.261), TVL-quintile bin medians
+(1.370), and an isotonic (monotone) fit (1.390). All lose to the kept curve's
+1.223, so the curve stays — and all five are now computed at run time and
+shown on the dashboard alongside the earlier rejections. Radar-6 also runs a
+top-20 ablation at run time: the kept top 20 survives fitted-only 17/20, a
+flat 0.25x TVL curve 18/20, a global-median ratio 18/20, one odds rate with no
+age bucket 17/20, and the winsorized curve 20/20. A top 20 that survives
+simpler models is a ranking the model does not invent. Six more variants
+win on walk-forward alone but lose on leave-one-out — log age, ridge shrinkage
+toward 0, growth-weighted fits, a trimmed fit, TVL-rank percentiles and
+TVL-quintile bins — and are not adopted: the walk-forward test set (n=20,
+newer listings) is systematically easier for flatter curves, so leave-one-out
+is the binding bar, and a term is kept only if it wins on both.
 
 Radar-3's one model change is the odds. Protocols whose listing date the
 snapshot does not record used to get the overall token rate (0.549); 113 such
@@ -90,7 +92,7 @@ base-bridge, binance-bitcoin and coinbase-bridge at the top; the full
 exclusion (category, versioned names, wrapped/staked/staking words, exchange
 name prefixes) removes them.
 
-## Farm verdicts (radar-5)
+## Farm verdicts (radar-6)
 
 The snapshot has no airdrop share and no fee, so no row promises dollars per
 farmer. The verdict ranks effort: FARM is the top quarter by implied value with
@@ -107,13 +109,25 @@ plan's network fees plus the 0.25% pool fee where a plan swaps. The deposit
 tiers' break-even now moves with the deposit on swap legs, because the pool
 fee scales with the amount swapped.
 
-## Chain fees (radar-5; researched, not assumed)
+Radar-6 adds a net figure to every row, under one stated scenario that the
+dashboard prints next to it: the airdrop pool is 7% of the implied value, the
+farmed capital is 1% of TVL, and a farmer's slice is proportional to their
+deposit within the farmed capital; net is the slice minus all the plan's
+costs (time at $25/hour, network fees, pool fee). The board sorts by net and
+by net per hour, the lede names the top three FARM rows by net per hour, and
+a row is marked ROBUST when its net stays positive even at the band's 10th
+percentile. The deposit and drop-share controls re-price every net live. The
+scenario is an assumption, not a forecast — the snapshot carries no airdrop
+share, so no net is a promised payout; it is the dollars that would have to
+arrive for the row to pay, under assumptions the reader can change.
+
+## Chain fees (radar-6; researched, not assumed)
 
 Gas is not in the snapshot, so every fee was researched from public trackers
-on 2026-11-22 (growthepie, L2Fees.info, GasNow, DataWallet, DeFiStar,
-OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). One DEX swap's
-network fee, USD, then the conservative per-transaction figure the farm math
-uses (the range's high end):
+on 2026-11-22 and 2026-11-23 (growthepie, L2Fees.info, GasNow, DataWallet,
+DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). One DEX
+swap's network fee, USD, then the conservative per-transaction figure the farm
+math uses (the range's high end):
 
 | Chain | One swap (network) | Per tx used | How measured |
 | --- | --- | --- | --- |
@@ -147,20 +161,49 @@ uses (the range's high end):
 | Blast | ~$0.025 | $0.025 | measured median |
 | Monad | $0.0005–$0.001 | $0.001 | measured median |
 | Hyperliquid L1 (HyperEVM gas) | $0.033–$0.062 | $0.062 | measured median |
+| Flare | $0.0001–$0.001 | $0.001 | estimate |
+| Ink | $0.001–$0.005 | $0.005 | estimate |
+| Provenance | no swap; $0.15/message | $0.15 | estimate |
+| Plasma | $0.00001–$0.0001 | $0.001 | measured median |
+| Arc | $0.003–$0.045 | $0.05 | estimate |
+| Ripple | ~$0.000011 | $0.001 | measured median |
+| Noble | no DEX; transfer $0.01–$0.10 | $0.10 | estimate |
+| Manta | $0.0009–$0.0017 | $0.002 | measured median |
+| World Chain | $0.001–$0.005 | $0.005 | estimate |
+| Kava | <$0.0001 | $0.001 | measured median |
+| Morph | $0.01–$0.03 | $0.03 | estimate |
+| RSK | $0.17–$0.25 | $0.25 | measured median |
+| Ronin | $0.0003–$0.0006 | $0.001 | measured median |
+| Proton | no fee (resource model) | $0.001 | measured median |
+| Tempo | $0.0001–$0.0018 | $0.002 | measured median |
+| Reya Network | $0.00001–$0.002 | $0.002 | measured median |
+| Starknet | $0.10–$0.35 | $0.35 | estimate |
+| Strato | $0.01 flat | $0.01 | measured median |
+| Stable | $0.0001–$0.0002 | $0.001 | measured median |
+| Klaytn (Kaia) | $0.0002–$0.001 | $0.001 | measured median |
+| Bifrost Network | ~$0.006 | $0.01 | estimate |
+| Qubic | no swap; transfer-cost proxy | $0.005 | estimate |
+| Stacks | $0.03–$0.79 | $0.80 | measured median |
+| Fluent | $0.0003–$0.001 | $0.001 | measured median |
+| Plume Mainnet | $0.002–$0.02 | $0.02 | measured median |
 
 A plan is 3 + ceil(holdDays/7) transactions (approve, setup, one a week,
 claim), so the network fee is that count times the per-transaction figure.
-45 of the 198 rows sit on chains with no reliable public figure (Flare,
-Katana, Arc, Hemi, Pharos, Plume Mainnet, Ink, Stable, TAC, Mezo, Citrea,
-Noble, Bittensor, Fantom, Plasma, Ripple, Provenance, RISE and the long tail)
-— those rows say the fee is unknown rather than quoting a guess, and their
-break-even is time cost only. Gotchas priced into the steps: a first swap
-costs approve + swap; a first Solana token account costs ~0.00204 SOL rent
-(~$0.16, refundable); Tron USDT transfers cost $1–$4 when TRX is burned for
-energy; bridging (~$0.30–$4 per $500 stablecoin bridge) is usually the biggest
-fee in a plan; a round trip is 4–6 transactions. Gas prices move daily, so
-every figure is a November-2026 snapshot. Every row says "records no token",
-never "has no token".
+8 of the 198 rows sit on chains with no reliable public figure — RISE (2
+rows), BSquared, Bittensor, Pharos, Mezo, XION and Canton (1 row each) — those
+rows say the fee is unknown rather than quoting a guess, and their break-even
+is time cost only. Gotchas priced
+into the steps: a first swap costs approve + swap; a first Solana token
+account costs ~0.00204 SOL rent (~$0.16, refundable); Tron USDT transfers
+cost $1–$4 when TRX is burned for energy; bridging (~$0.30–$4 per $500
+stablecoin bridge) is usually the biggest fee in a plan; a round trip is
+4–6 transactions. Two chains are expensive enough to change a verdict: RSK
+$0.25 and Stacks $0.80 per transaction. World Chain swaps may carry a 1%
+World Money app fee on top (an app fee, not a network fee, and not in the farm
+math). Noble and Provenance have no DEX swap — their figures are transfer
+costs, and the plans say so. Gas prices move daily, so every figure is a
+November-2026 snapshot. Every row says "records no token", never "has no
+token".
 
 ## Run it
 
