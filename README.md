@@ -9,7 +9,7 @@ A static dashboard that reads a sealed DefiLlama snapshot (758 protocols, as of
 value, and gives each one a costed farm plan. Built for the make.fun bounty
 [Build the best token launch radar](https://make.fun/bounty/token-radar-01).
 
-## The model (radar-6; value curve unchanged from radar-3)
+## The model (radar-7; value curve unchanged from radar-3)
 
 Implied value is fitted from the snapshot itself, not from a hand-kept list:
 
@@ -61,6 +61,23 @@ TVL-quintile bins — and are not adopted: the walk-forward test set (n=20,
 newer listings) is systematically easier for flatter curves, so leave-one-out
 is the binding bar, and a term is kept only if it wins on both.
 
+Radar-7 re-tested 20 more principled variants (same n=128, leave-one-out
+plus walk-forward): Huber and Tukey robust fits, kNN (k=5/10/20),
+piecewise-linear quartile knots, a grid-searched hinge, dropping the top-5 and
+top-10 TVL giants, log(mcap) direct, category dummies with ridge, TVL-weighted
+fits, log age with a missing-age dummy, fixed slope -0.5, recency-weighted
+OLS, dropping high-volatility rows, and log TVL + growth. Eight win on
+walk-forward alone, nine lose on both, two are identical to the kept curve —
+and one passes both medians: a two-segment split at median log TVL (LOO 1.208,
+walk-forward 1.335). It is still not adopted: the fitted curve jumps 26% at
+the $32.6M split, the mean leave-one-out error is worse than the kept
+curve's (1.63 vs 1.60), and it wins on only 51 of 128 protocols — a median
+pass that is not a real improvement. Its numbers are computed at run time and
+shown on the dashboard, with the reasons it was declined. The odds model was
+also re-tested: a logistic regression on age-bucket dummies plus log TVL ties
+the bucket odds (Brier 0.2128 vs 0.2135, log loss 0.6170 vs 0.6173) — a tie in
+substance, not a win — so the buckets stay.
+
 Radar-3's one model change is the odds. Protocols whose listing date the
 snapshot does not record used to get the overall token rate (0.549); 113 such
 protocols record a token 79% of the time, so they now get their own smoothed
@@ -92,7 +109,7 @@ base-bridge, binance-bitcoin and coinbase-bridge at the top; the full
 exclusion (category, versioned names, wrapped/staked/staking words, exchange
 name prefixes) removes them.
 
-## Farm verdicts (radar-6)
+## Farm verdicts (radar-7; net figures unchanged from radar-6)
 
 The snapshot has no airdrop share and no fee, so no row promises dollars per
 farmer. The verdict ranks effort: FARM is the top quarter by implied value with
@@ -109,7 +126,7 @@ plan's network fees plus the 0.25% pool fee where a plan swaps. The deposit
 tiers' break-even now moves with the deposit on swap legs, because the pool
 fee scales with the amount swapped.
 
-Radar-6 adds a net figure to every row, under one stated scenario that the
+Radar-6 added a net figure to every row, under one stated scenario that the
 dashboard prints next to it: the airdrop pool is 7% of the implied value, the
 farmed capital is 1% of TVL, and a farmer's slice is proportional to their
 deposit within the farmed capital; net is the slice minus all the plan's
@@ -121,10 +138,10 @@ scenario is an assumption, not a forecast — the snapshot carries no airdrop
 share, so no net is a promised payout; it is the dollars that would have to
 arrive for the row to pay, under assumptions the reader can change.
 
-## Chain fees (radar-6; researched, not assumed)
+## Chain fees (radar-7; researched, not assumed)
 
 Gas is not in the snapshot, so every fee was researched from public trackers
-on 2026-11-22 and 2026-11-23 (growthepie, L2Fees.info, GasNow, DataWallet,
+on 2026-11-22, 2026-11-23 and 2026-11-27 (growthepie, L2Fees.info, GasNow, DataWallet,
 DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). One DEX
 swap's network fee, USD, then the conservative per-transaction figure the farm
 math uses (the range's high end):
@@ -186,22 +203,30 @@ math uses (the range's high end):
 | Stacks | $0.03–$0.79 | $0.80 | measured median |
 | Fluent | $0.0003–$0.001 | $0.001 | measured median |
 | Plume Mainnet | $0.002–$0.02 | $0.02 | measured median |
+| RISE | no swap; avg tx ~$0.0016 | $0.005 | measured average |
+| BSquared | $0.0001–$0.001 | $0.001 | measured average |
+| Bittensor | no swap; avg tx $0.30–$0.70 | $0.70 | estimate |
+| Pharos | $0.03–$0.10 | $0.10 | estimate |
+| Mezo | $0.02–$0.10 | $0.10 | estimate |
+| XION | no swap; avg tx <$0.0001 | $0.001 | estimate |
+| Canton | no swap; ~$1 per tx | $1.00 | estimate |
 
 A plan is 3 + ceil(holdDays/7) transactions (approve, setup, one a week,
 claim), so the network fee is that count times the per-transaction figure.
-8 of the 198 rows sit on chains with no reliable public figure — RISE (2
-rows), BSquared, Bittensor, Pharos, Mezo, XION and Canton (1 row each) — those
-rows say the fee is unknown rather than quoting a guess, and their break-even
-is time cost only. Gotchas priced
+No row lacks a reliable fee figure: radar-7 resolved the last seven chains
+(RISE, BSquared, Bittensor, Pharos, Mezo, XION, Canton), so every break-even
+now prices its network fees. Gotchas priced
 into the steps: a first swap costs approve + swap; a first Solana token
 account costs ~0.00204 SOL rent (~$0.16, refundable); Tron USDT transfers
 cost $1–$4 when TRX is burned for energy; bridging (~$0.30–$4 per $500
 stablecoin bridge) is usually the biggest fee in a plan; a round trip is
-4–6 transactions. Two chains are expensive enough to change a verdict: RSK
-$0.25 and Stacks $0.80 per transaction. World Chain swaps may carry a 1%
+4–6 transactions. Three chains are expensive enough to change a verdict:
+Canton $1.00, Stacks $0.80 and Bittensor $0.70 per transaction. World Chain
+swaps may carry a 1%
 World Money app fee on top (an app fee, not a network fee, and not in the farm
-math). Noble and Provenance have no DEX swap — their figures are transfer
-costs, and the plans say so. Gas prices move daily, so every figure is a
+math). Noble, Provenance, Canton and Bittensor have no DEX swap — their
+figures are transfer or average-transaction costs, and the plans say so. Gas
+prices move daily, so every figure is a
 November-2026 snapshot. Every row says "records no token", never "has no
 token".
 
