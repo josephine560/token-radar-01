@@ -1,17 +1,7 @@
-/* Token Radar theme, radar-6. Palette: deep green ink on a pale sage canvas,
+/* Token Radar theme, radar-7. Palette: deep green ink on a pale sage canvas,
    one accent, one warning, hairlines and two type families. No framework.
-   Judge summary (also on the page, KPI strip, top): model log(mcap/TVL) =
-   6.965 - 0.478 log(TVL), n=128, R2 0.168; leave-one-out median error 1.22
-   (about x3.4) vs 1.62 global-median and 1.63 starter baselines; walk-forward
-   1.43 vs 1.64; odds by age, 4x5-fold CV Brier 0.213 with the age-not-recorded
-   bucket vs 0.221 without; coverage 758/758 (198 ranked: 40 watchlist + 158
-   early; 144 pre-token counted; 416 token-recorded set aside); verdicts FARM
-   44 / THIN 58 / SKIP 96. Farm economics are time cost (hours x $25/h, an
-   assumption the reader can change) plus researched November-2026 network fees
-   plus the 0.25% pool fee where a plan swaps; 8 rows sit on chains with no
-   reliable fee figure and say so. Net if launch is a stated scenario (drop pool
-   7% of implied value, farmed capital 1% of TVL, slice proportional to deposit),
-   not a payout. */
+   The numbers the old header repeated live on the page (KPI strip, top),
+   rendered from data.js — this file is only the theme. */
 :root {
   --canvas: #eef3ef;
   --surface: #ffffff;

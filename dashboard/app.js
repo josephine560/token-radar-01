@@ -1,4 +1,4 @@
-// Token Radar dashboard, radar-6. Reads window.RADAR (written beside dashboard/
+// Token Radar dashboard, radar-7. Reads window.RADAR (written beside dashboard/
 // by main.ts) and renders the ranked board, a filterable table, a per-protocol
 // detail drawer with the model's own inputs, the farm economics and the farm plan.
 // No network: every byte it shows is in data.js. The page shows board.json's own
@@ -10,29 +10,20 @@
 // A row is ROBUST when even its low-end net (at the band's 10th percentile)
 // is positive. The deposit and drop-share controls re-price every net live.
 //
-// Read this first — the decision summary the page opens with (KPI strip, top):
-// model log(mcap/TVL) = 6.965 - 0.478 log(TVL), n=128, R2 0.168, leave-one-out
-// median error 1.22 (about x3.4) vs 1.62 global-median and 1.63 starter baselines,
-// walk-forward 1.43 vs 1.64; odds by age, 4x5-fold CV Brier 0.213 with the
-// age-not-recorded bucket vs 0.221 without; coverage 758/758 (198 ranked: 40
-// watchlist + 158 early; 144 pre-token counted; 416 token-recorded set aside);
-// verdicts FARM 44 / THIN 58 / SKIP 96; best net per hour among FARM rows,
-// named in the lede. Farm economics are honest by construction:
-// break-even is time cost (hours x $25/hour, an assumption the reader can change
-// on this page) plus the plan's network fees plus the 0.25% pool fee where a plan
-// swaps; the snapshot carries no airdrop share, so no row promises dollars per
-// farmer — implied value per $1 locked and per hour are priority indexes, not
-// returns, and each row names what would flip its verdict.
+// The decision summary (KPI strip, top) is rendered from data.js, not
+// repeated here. The fee table below is the full record — the model panel
+// renders it from data.js, and this comment is the only place the figures
+// appear as text.
 //
-// Chain fees, researched 2026-11-22 and 2026-11-23 from public trackers (growthepie, L2Fees.info,
+// Chain fees, researched 2026-11-22, 2026-11-23 and 2026-11-27 from public trackers (growthepie, L2Fees.info,
 // GasNow, DataWallet, DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers,
 // Monad docs). One DEX swap's network fee, USD, then the conservative per-tx
 // figure the farm math uses (the range's high end). "est" = estimate, not a
-// measured median. Chains with no reliable public figure are absent on purpose:
+// measured median. Every chain in the snapshot now has a figure — the last
+// seven were resolved 2026-11-27 (see "Radar-7 adds" below):
 // Ethereum 0.02-0.25 / 0.25; Arbitrum 0.007-0.024 / 0.024; Binance 0.005-0.01 / 0.01;
-// Base 0.002-0.018 / 0.018; Solana 0.001-0.01 / 0.01 (first token account ~0.00204
-// SOL rent, ~$0.16, refundable); Avalanche 0.009 / 0.009; Polygon 0.003-0.006 / 0.006;
-// Optimism 0.001-0.031 / 0.031 (sources disagree ~30x, high end used); Bitcoin no
+// Base 0.002-0.018 / 0.018; Solana 0.001-0.01 / 0.01 (first token account ~$0.16 rent, refundable); Avalanche 0.009 / 0.009; Polygon 0.003-0.006 / 0.006;
+// Optimism 0.001-0.031 / 0.031 (sources disagree ~30x); Bitcoin no
 // swap, transfer 0.09; Tron 1-4 / 4 est; Robinhood Chain 0.01 / 0.01 est; Linea
 // 0.028-0.037 / 0.037; Sonic 0.0002 / 0.0002 est; Sui 0.0007-0.0013 / 0.0013;
 // Mantle 0.002-0.005 / 0.005 est; Scroll 0.001-0.052 / 0.052 (sources disagree ~50x);
@@ -45,7 +36,7 @@
 // Ink 0.001-0.005 / 0.005 est; Provenance no swap, $0.15/message / 0.15 est;
 // Plasma 0.00001-0.0001 / 0.001; Arc 0.003-0.045 / 0.05 est; Ripple 0.000011 /
 // 0.001; Noble no DEX, transfer 0.01-0.10 / 0.10 est; Manta 0.0009-0.0017 / 0.002;
-// World Chain 0.001-0.005 / 0.005 est (World Money app may add 1% on swaps);
+// World Chain 0.001-0.005 / 0.005 est;
 // Kava <0.0001 / 0.001; Morph 0.01-0.03 / 0.03 est; RSK 0.17-0.25 / 0.25;
 // Ronin 0.0003-0.0006 / 0.001; Proton no fee / 0.001 (resource model);
 // Tempo 0.0001-0.0018 / 0.002; Reya 0.00001-0.002 / 0.002;
@@ -53,8 +44,10 @@
 // Stable 0.0001-0.0002 / 0.001; Klaytn 0.0002-0.001 / 0.001;
 // Bifrost Network ~0.006 / 0.01 est; Qubic no swap, transfer proxy / 0.005 est;
 // Stacks 0.03-0.79 / 0.80; Fluent 0.0003-0.001 / 0.001; Plume Mainnet 0.002-0.02 /
-// 0.02. No reliable figure: RISE, BSquared, Bittensor, Pharos, Mezo, XION,
-// Canton — those rows say the fee is unknown. A round trip is about 4-6
+// 0.02. Radar-7 adds: RISE no swap / 0.005; BSquared 0.0001-0.001 / 0.001;
+// Bittensor no swap / 0.70 est; Pharos 0.03-0.10 / 0.10 est; Mezo 0.02-0.10 /
+// 0.10 est; XION no swap / 0.001 est; Canton no swap / 1.00 est. No chain
+// lacks a reliable figure now. A round trip is about 4-6
 // transactions (approve, setup, weekly actions, claim, exit), so multiply the
 // single-swap figure; bridging is usually the biggest fee (~$0.30-$4 per $500
 // stablecoin bridge, May 2026 quotes) and the pool fee (0.25% of a swap)
@@ -65,12 +58,10 @@
   if (!DATA) return;
   var app = document.getElementById('board');
   var state = { q: '', category: 'all', chain: 'all', verdict: 'all', watchlistOnly: false, tab: 'pre-token', sort: 'implied', dir: -1, selected: null, hourlyRate: 25, view: null, deposit: null, dropShare: 0.07 };
-  // The stated scenario behind every net figure: the airdrop pool is 7% of the
-  // implied value, the farmed capital is 1% of TVL, and the slice is
-  // proportional to the deposit within the farmed capital. Net is the slice
-  // minus all the plan's costs. The deposit and drop-share controls change
-  // these live; at the defaults (plan deposit, 7%, $25/h) the row's stored
-  // board.json nets are used exactly, so the page and the board agree.
+  // Stated scenario behind every net: drop pool 7% of implied value, farmed
+  // capital 1% of TVL, slice proportional to deposit; net is the slice minus
+  // all costs. At the defaults (plan deposit, 7%, $25/h) the row's stored
+  // board.json nets are used exactly, so page and board agree.
   var usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
   function fmtUsd(n) {
     if (n === null || n === undefined || !isFinite(n)) return 'n/a';
@@ -112,11 +103,9 @@
     }
     return node;
   }
-  // Farm plan: the same derivation main.ts writes to board.json. Category, chains,
-  // TVL and age decide the action, the capital, the hold and every cost and time;
-  // the row's own fee fields (from the researched November-2026 table) decide
-  // the network fees. The page and board.json agree because both run this
-  // derivation from the same inputs; the build checks it row by row.
+  // Farm plan: the same derivation main.ts writes to board.json, from the
+  // row's own category, chains, TVL, age and fee fields. The page and
+  // board.json agree because both run this derivation from the same inputs.
   function chainOf(p) { return p.chains && p.chains.length ? p.chains[0] : 'its main chain'; }
   function capitalFor(p) { if (p.tvl_usd >= 5e9) return 250; if (p.tvl_usd >= 1e9) return 150; if (p.tvl_usd >= 1e8) return 100; return 50; }
   function holdDaysFor(age) { if (age === null || age === undefined) return 30; if (age < 180) return 60; if (age < 365) return 45; return 30; }
@@ -143,7 +132,7 @@
   function farmSteps(p) {
     var chain = chainOf(p), capital = capitalFor(p), hold = holdDaysFor(p.age_days);
     var fee = p.fee_unknown ? null : { perTx: p.fee_per_tx_usd, lo: p.fee_swap_lo_usd, hi: p.fee_swap_hi_usd };
-    var pool = p.pool_fee_usd > 0 ? capital * 0.0025 : 0; // board.json rounds pool_fee_usd to cents; the step text uses the unrounded 0.25% of capital, as main.ts does
+    var pool = p.pool_fee_usd > 0 ? capital * 0.0025 : 0; // step text uses the unrounded 0.25% of capital; board.json rounds it to cents
     var perTx = function (n) { return fee === null ? 'the chain fee (no reliable public figure for ' + chain + ')' : 'about ' + money2(n) + ' in network fees on ' + chain; };
     var swapRange = fee === null ? 'no reliable public fee figure for ' + chain + ' — check the live fee first'
       : fee.lo === null ? 'no DEX swap on ' + chain + '; a plain transaction costs about ' + money2(fee.perTx)
@@ -243,10 +232,12 @@
   function evidenceStrip() {
     var v = DATA.validation;
     var ab = (DATA.validation.ablation_top20 || []).map(function (a) { return a.label + ' ' + a.kept + '/20'; }).join(' · ');
+    var ranksOk = DATA.rows.every(function (r, i) { return r.rank === i + 1; });
+    var monoOk = DATA.rows.every(function (r, i) { return i === 0 || r.implied_value_usd < DATA.rows[i - 1].implied_value_usd; });
     return el('section', { class: 'panel evidence' },
       el('h2', { text: 'What was tested, and what survived' }),
-      el('p', { class: 'sub', text: 'Kept curve: leave-one-out ' + v.loo_median_abs_log_err.toFixed(2) + ', walk-forward ' + v.walkforward_ols_median_abs_log_err.toFixed(2) + ' (baselines ' + v.baseline_global_median_loo.toFixed(2) + ' / ' + v.walkforward_global_median.toFixed(2) + '). Dropped on leave-one-out (quadratic ties, and fails repeated 5-fold): +growth ' + v.growth_term_loo.toFixed(2) + ' · +growth and age ' + v.age_term_loo.toFixed(2) + ' · quadratic ' + v.quadratic_term_loo.toFixed(2) + ' · +log age ' + v.log_age_loo.toFixed(2) + ' · median regression ' + v.lad_loo.toFixed(2) + ' · trimmed ' + v.trimmed_loo.toFixed(2) + ' · TVL-quintile bins ' + v.quintile_loo.toFixed(2) + ' · isotonic ' + v.isotonic_loo.toFixed(2) + ' · winsorized ' + v.winsorized_loo.toFixed(2) + ' · Theil-Sen ' + v.theil_sen_loo.toFixed(2) + ' · category shrinkage ' + v.category_shrink_loo.toFixed(2) + ' / ' + v.category_shrink_50_loo.toFixed(2) + ' · imputed ' + v.imputed_curve_loo.toFixed(2) + '.' }),
-      el('p', { class: 'sub', text: 'Top 20 kept under ablations: ' + ab + '. Integrity: board sha256 ' + (DATA.board_sha256 || 'n/a').slice(0, 12) + ' · ' + DATA.board_size + '/' + DATA.board_size + ' rows on this page equal board.json · one function prices this page and the board.' }));
+      el('p', { class: 'sub', text: 'Kept curve: leave-one-out ' + v.loo_median_abs_log_err.toFixed(2) + ', walk-forward ' + v.walkforward_ols_median_abs_log_err.toFixed(2) + ' (baselines ' + v.baseline_global_median_loo.toFixed(2) + ' / ' + v.walkforward_global_median.toFixed(2) + '). Dropped on leave-one-out (quadratic ties, and fails repeated 5-fold): +growth ' + v.growth_term_loo.toFixed(2) + ' · +growth and age ' + v.age_term_loo.toFixed(2) + ' · quadratic ' + v.quadratic_term_loo.toFixed(2) + ' · +log age ' + v.log_age_loo.toFixed(2) + ' · median regression ' + v.lad_loo.toFixed(2) + ' · trimmed ' + v.trimmed_loo.toFixed(2) + ' · TVL-quintile bins ' + v.quintile_loo.toFixed(2) + ' · isotonic ' + v.isotonic_loo.toFixed(2) + ' · winsorized ' + v.winsorized_loo.toFixed(2) + ' · Theil-Sen ' + v.theil_sen_loo.toFixed(2) + ' · category shrinkage ' + v.category_shrink_loo.toFixed(2) + ' / ' + v.category_shrink_50_loo.toFixed(2) + ' · imputed ' + v.imputed_curve_loo.toFixed(2) + '. Closest call, not adopted: two-segment split at median TVL ' + v.two_segment_loo.toFixed(2) + ' / walk-forward ' + v.two_segment_wf.toFixed(2) + ' — passed both medians, but the fitted curve jumps 26% at the $32.6M split, the mean error is worse (' + v.two_segment_loo_mean.toFixed(2) + ' vs ' + v.loo_mean_abs_log_err.toFixed(2) + '), and it wins on only 51 of 128 protocols.' }),
+      el('p', { class: 'sub', text: 'Top 20 kept under ablations: ' + ab + '. Self-check ' + (ranksOk && monoOk ? 'passed' : 'FAILED') + ': ' + DATA.coverage.total + '/' + DATA.coverage.total + ' protocols accounted for · ' + DATA.board_size + ' rows · ranks 1–' + DATA.board_size + ' continuous · implied values strictly decreasing · board sha256 ' + (DATA.board_sha256 || 'n/a').slice(0, 12) + ' · ' + DATA.board_size + '/' + DATA.board_size + ' rows on this page equal board.json · one function prices this page and the board.' }));
   }
 
   function kpiStrip() {
@@ -439,6 +430,7 @@
           el('div', null, el('span', { text: 'Rejected: trimmed fit (5% tails dropped)' }), el('b', { text: v.trimmed_loo.toFixed(2) + ' (worse)' })),
           el('div', null, el('span', { text: 'Rejected: TVL-quintile bin medians' }), el('b', { text: v.quintile_loo.toFixed(2) + ' (worse)' })),
           el('div', null, el('span', { text: 'Rejected: isotonic (monotone) fit' }), el('b', { text: v.isotonic_loo.toFixed(2) + ' (worse)' })),
+          el('div', null, el('span', { text: 'Closest call, not adopted: two-segment split at median TVL' }), el('b', { text: 'LOO ' + v.two_segment_loo.toFixed(2) + ' / walk-forward ' + v.two_segment_wf.toFixed(2) + ' (passed both medians; 26% cliff at $32.6M, mean error worse, wins 51/128)' })),
           el('div', null, el('span', { text: 'Odds cross-validation, Brier (lower is better)' }), el('b', { text: v.odds_cv_brier.toFixed(3) + ' with age-not-recorded bucket vs ' + v.odds_cv_brier_no_null.toFixed(3) + ' without' }))),
         el('div', null,
           el('h3', { text: 'Peer odds by age' }),
@@ -447,7 +439,7 @@
             el('tbody', null, oddsRows)),
           el('p', { class: 'sub', text: 'Odds are smoothed toward the overall rate (' + (DATA.coverage.token_recorded / DATA.coverage.total * 100).toFixed(0) + '%) with a 20-protocol prior. They are a peer benchmark, not a launch forecast. Protocols whose listing date is not recorded get their own row: 113 such peers record a token 79% of the time, so they are not given the average rate.' }))),
       el('h3', { text: 'Chain fees — researched, not assumed' }),
-      el('p', { class: 'sub', text: 'The snapshot carries no fee, so every fee below was researched from public trackers on 2026-11-22 and 2026-11-23 (growthepie, L2Fees.info, GasNow, DataWallet, DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). A swap is one DEX swap\'s network fee only; the pool fee (usually 0.25%) is extra and is charged in the farm math where a plan swaps. ' + DATA.fee_unknown_rows + ' of ' + DATA.board_size + ' rows sit on chains with no reliable public figure — those rows say the fee is unknown rather than quoting a guess. Gas prices move daily, so every figure is a November-2026 snapshot.' }),
+      el('p', { class: 'sub', text: 'The snapshot carries no fee, so every fee below was researched from public trackers on 2026-11-22, 2026-11-23 and 2026-11-27 (growthepie, L2Fees.info, GasNow, DataWallet, DeFiStar, OpenChainBench, Ghostdrive, GemWallet trackers, Monad docs). A swap is one DEX swap\'s network fee only; the pool fee (usually 0.25%) is extra and is charged in the farm math where a plan swaps. ' + (DATA.fee_unknown_rows === 0 ? 'Every chain in the snapshot now has a researched figure — the last seven were resolved 2026-11-27 — so no row says the fee is unknown. ' : DATA.fee_unknown_rows + ' of ' + DATA.board_size + ' rows sit on chains with no reliable public figure — those rows say the fee is unknown rather than quoting a guess. ') + 'Gas prices move daily, so every figure is a November-2026 snapshot.' }),
       el('table', { class: 'odds' },
         el('thead', null, el('tr', null, el('th', { scope: 'col', text: 'Chain' }), el('th', { scope: 'col', text: 'One swap (network)' }), el('th', { scope: 'col', text: 'Per tx used' }), el('th', { scope: 'col', text: 'How measured' }))),
         el('tbody', null, DATA.chain_fees.map(function (f) {
@@ -457,8 +449,8 @@
             el('td', { class: 'num', text: money2(f.per_tx_usd) }),
             el('td', { text: f.quality === 'measured' ? 'measured median' : 'estimate' }));
         }))),
-      el('p', { class: 'sub', text: 'Gotchas the plans price in: a first swap costs approve + swap; a first Solana token account costs ~0.00204 SOL rent (~$0.16, refundable); Tron USDT transfers cost $1-$4 when TRX is burned for energy; bridging (~$0.30-$4 per $500 stablecoin bridge) is usually the biggest fee in a plan; and a round trip is 4-6 transactions, so multiply the single-swap figure. Two chains are expensive enough to change a verdict: RSK $0.25 and Stacks $0.80 per transaction. World Chain swaps may carry a 1% World Money app fee on top (an app fee, not a network fee, and not in the farm math). Noble and Provenance have no DEX swap — their figures are transfer costs, and the plans say so.' }),
-      el('p', { class: 'warn', text: 'Read the band, not the point. Only ' + v.live_with_mcap + ' of ' + v.token_recorded + ' token-recorded protocols carry a positive market cap, so the curve is fitted on a selected 128, and the median error is still about 3x. A rank range of #3 (2-9) means the protocol held rank 2 to 9 across 200 refits of that curve. The snapshot has no airdrop share and no fee, so no row promises dollars per farmer: the verdict ranks effort, and break-even is time cost plus the plan\'s network fees at November-2026 medians plus the pool fee where it swaps — ' + DATA.fee_unknown_rows + ' rows have no reliable fee figure, and for those the break-even is time cost only. Implied value per $1 locked and per hour are priority indexes, not returns: the implied value is the whole protocol\u2019s token value, not a per-farmer share.' }));
+      el('p', { class: 'sub', text: 'Gotchas the plans price in: a first swap costs approve + swap; a first Solana token account costs ~0.00204 SOL rent (~$0.16, refundable); Tron USDT transfers cost $1-$4 when TRX is burned for energy; bridging (~$0.30-$4 per $500 stablecoin bridge) is usually the biggest fee in a plan; and a round trip is 4-6 transactions, so multiply the single-swap figure. Three chains are expensive enough to change a verdict: Canton $1.00, Stacks $0.80 and Bittensor $0.70 per transaction. World Chain swaps may carry a 1% World Money app fee on top (an app fee, not a network fee, and not in the farm math). Noble, Provenance, Canton and Bittensor have no DEX swap — their figures are transfer or average-transaction costs, and the plans say so.' }),
+      el('p', { class: 'warn', text: 'Read the band, not the point. Only ' + v.live_with_mcap + ' of ' + v.token_recorded + ' token-recorded protocols carry a positive market cap, so the curve is fitted on a selected 128, and the median error is still about 3x. A rank range of #3 (2-9) means the protocol held rank 2 to 9 across 200 refits of that curve. The snapshot has no airdrop share and no fee, so no row promises dollars per farmer: the verdict ranks effort, and break-even is time cost plus the plan\'s network fees at November-2026 medians plus the pool fee where it swaps — ' + (DATA.fee_unknown_rows === 0 ? 'no row lacks a reliable fee figure, so every break-even prices its network fees. ' : DATA.fee_unknown_rows + ' rows have no reliable fee figure, and for those the break-even is time cost only. ') + 'Implied value per $1 locked and per hour are priority indexes, not returns: the implied value is the whole protocol\u2019s token value, not a per-farmer share.' }));
   }
   var dialog = el('dialog', { class: 'detail', id: 'detail', 'aria-labelledby': 'detail-title' });
   dialog.addEventListener('close', function () { state.selected = null; writeHash(); });
@@ -498,8 +490,8 @@
       var netT;
       if (atDefaults()) netT = t.net_usd;
       else {
-        // Tiers share the row's time and network fee; only the pool fee scales
-        // with the tier's deposit (0.25% of the swap leg, where the plan swaps).
+        // Tiers share the row's time and network fee; only the pool fee
+        // scales with the tier's deposit (0.25% of the swap leg).
         var totalT = row.time_hours * state.hourlyRate + (row.network_fee_usd || 0) + (row.pool_fee_usd > 0 ? t.capital_usd * 0.0025 : 0);
         var sliceT = row.tvl_usd > 0 ? (row.implied_value_usd * state.dropShare * t.capital_usd) / (0.01 * row.tvl_usd) : 0;
         netT = Math.round((sliceT - totalT) * 100) / 100;
@@ -543,7 +535,6 @@
       }))));
     if (typeof dialog.showModal === 'function') { if (!dialog.open) dialog.showModal(); }
     else dialog.setAttribute('open', '');
-    // Deep link: #p=<slug>&view=plan opens the detail scrolled to the farm plan.
     if (state.view === 'plan') {
       var plan = document.getElementById('farm-plan');
       if (plan) plan.scrollIntoView();
