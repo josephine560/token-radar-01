@@ -1,19 +1,23 @@
-// Token Radar, model radar-6: the implied value is fitted from the snapshot itself.
-// Radar-6 keeps radar-3's value curve, odds and bootstrap unchanged — radar-6
-// re-tested 16 more principled variants offline (same n=128, leave-one-out
-// plus walk-forward): log-age, LAD median regression, Poisson and Gamma GLMs,
-// ridge shrinkage toward -0.5 and toward 0, separate Lending/Dexs fits,
-// growth-weighted fits, isotonic, trimmed OLS, TVL-rank percentile, log chain
-// count, and TVL-quintile bin medians. None beats the kept curve on BOTH
-// leave-one-out and walk-forward (six win walk-forward only; the walk-forward
-// test set is systematically easier for flatter curves), so the curve stays.
-// The five closest new rejections are now computed at run time and shown on
-// the dashboard (log-age 1.23, LAD 1.30, trimmed 1.26, quintile bins 1.52,
-// isotonic 1.38), alongside the earlier ones. Radar-6 reworks the farm
-// economics and the dashboard (see below): the net-of-costs slice, the
-// "farm next" lede, what-if controls, the evidence strip, and 25 more
-// researched chain fees, so only 8 of the 198 rows still sit on chains with
-// no reliable fee figure. The board rule (radar-5) still applies the
+// Token Radar, model radar-7: the implied value is fitted from the snapshot itself.
+// Radar-7 keeps radar-3's value curve, odds and bootstrap unchanged — radar-7
+// re-tested 20 more principled variants offline (same n=128, leave-one-out
+// plus walk-forward): Huber and Tukey robust fits, kNN (k=5/10/20),
+// piecewise-linear quartile knots, a grid-searched hinge, dropping the
+// top-5/top-10 TVL giants, log(mcap) direct, category dummies with ridge,
+// TVL-weighted fits, log age with a missing-age dummy, fixed slope -0.5,
+// recency-weighted OLS, dropping high-volatility rows, and log TVL + growth.
+// Nineteen fail the rule (seven win walk-forward only; the walk-forward test
+// set is systematically easier for flatter/local fits). One passes both
+// medians — a two-segment split at median log TVL (LOO 1.21, WF 1.34) — and
+// is STILL not adopted: the fitted curve jumps 26% at the $32.6M split, the
+// mean leave-one-out error is worse than the kept curve's (1.63 vs 1.60),
+// and it wins on only 51 of 128 protocols. A median pass that is not a real
+// improvement. Its numbers are computed at run time and shown on the
+// dashboard, so the reader can see the comparison, not take it on trust.
+// Radar-7 also resolves the last 7 fee-unknown chains (RISE, BSquared,
+// Bittensor, Pharos, Mezo, XION, Canton), so 0 of the 198 rows sit on a
+// chain with no reliable fee figure, and adds a runtime self-check strip.
+// The board rule (radar-5) still applies the
 // snapshot's own watchlist exclusion (bridged, staked, wrapped and exchange
 // products) without the TVL floor, so the board ranks 198 pre-token
 // protocols: the 40 watchlist plus 158 early ones, 20 of them above the
@@ -117,9 +121,8 @@
 // GemWallet trackers, Monad docs), with the conservative high end used as the
 // per-transaction figure and each chain marked measured or estimate. A plan is
 // 3 + ceil(holdDays/7) transactions (approve, setup, one a week, claim), so
-// the network fee is that count times the per-transaction figure; 8 of the
-// 198 rows sit on chains with no reliable public figure, and for those the
-// break-even is time cost only and the row is flagged fee_unknown.
+// the network fee is that count times the per-transaction figure; every row
+// now has a researched fee figure, so no row is flagged fee_unknown.
 //
 // Nothing here names a protocol. The same function scores every row.
 
@@ -178,6 +181,12 @@ export interface Validation {
   quintile_loo: number;
   /** Isotonic (monotone-decreasing, PAVA) fit of y on log TVL. */
   isotonic_loo: number;
+  /** Radar-7 closest call: two-segment split at the training median log
+   * TVL, separate OLS each side. Passes both medians, not adopted (see
+   * the header comment). LOO and walk-forward medians, and the LOO mean. */
+  two_segment_loo: number;
+  two_segment_wf: number;
+  two_segment_loo_mean: number;
   /** Top-20 overlap of the kept board under each ablated variant: how many
    * of the kept top 20 each simpler model keeps. Computed in buildRadar. */
   ablation_top20: Array<{ label: string; kept: number }>;
@@ -221,7 +230,7 @@ export interface Coverage {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-6';
+export const MODEL_VERSION = 'radar-7';
 
 /** Radar-5 ranks every rankable pre-token protocol (198 of the 342 pre-token
  * ones: the 40 watchlist rows plus 20 at or above the floor the watchlist
@@ -301,9 +310,9 @@ export const CHAIN_FEES: ChainFee[] = [
   { chain: 'Blast', swap_lo_usd: 0.025, swap_hi_usd: 0.025, per_tx_usd: 0.025, quality: 'measured', basis: 'L2Fees 30-day median' },
   { chain: 'Monad', swap_lo_usd: 0.0005, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'Monad docs gas-pricing page; GemWallet tracker' },
   { chain: 'Hyperliquid L1', swap_lo_usd: 0.033, swap_hi_usd: 0.062, per_tx_usd: 0.062, quality: 'measured', basis: 'HyperEVM gas (GemWallet tracker); HyperCore actions may differ' },
-  // Radar-6 additions, researched 2026-11-23 (see README for sources). Seven
-  // chains still have no reliable figure and stay absent: RISE, BSquared,
-  // Bittensor, Pharos, Mezo, XION, Canton.
+  // Radar-6 additions, researched 2026-11-23 (see README for sources).
+  // Radar-7 resolved the seven chains that had no reliable figure then
+  // (RISE, BSquared, Bittensor, Pharos, Mezo, XION, Canton) — see below.
   { chain: 'Flare', swap_lo_usd: 0.0001, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'estimate', basis: 'derived from gas price x gas (FIP.16 base fee 500 gwei, FLR ~$0.006); FAssets txs cost ~10x a plain transfer' },
   { chain: 'Ink', swap_lo_usd: 0.001, swap_hi_usd: 0.005, per_tx_usd: 0.005, quality: 'estimate', basis: 'growthepie median tx + OP-stack swap/transfer ratio (~10x); no Ink-specific swap median published' },
   { chain: 'Provenance', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.15, quality: 'estimate', basis: 'no DEX swap on this Cosmos chain; per-tx uses the $0.15/message default (flat USD fee model, transfer $0.025)' },
@@ -329,6 +338,20 @@ export const CHAIN_FEES: ChainFee[] = [
   { chain: 'Stacks', swap_lo_usd: 0.03, swap_hi_usd: 0.79, per_tx_usd: 0.8, quality: 'measured', basis: 'explorer swap-router txs Oct-Nov 2026: simple sBTC/STX swaps $0.03, multi-hop DLMM router swaps $0.56-0.79; fee is sender-chosen' },
   { chain: 'Fluent', swap_lo_usd: 0.0003, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'median fees ~$0.0005 (Aug 2026); DefiLlama Nov 22: $0.88 fees / 3,106 txs ~$0.00028/tx; gas paid in ETH' },
   { chain: 'Plume Mainnet', swap_lo_usd: 0.002, swap_hi_usd: 0.02, per_tx_usd: 0.02, quality: 'measured', basis: 'explorer swap txs Nov 15-16 2026: 0.36-0.40 PLUME, gas price flat 1,000 Gwei, PLUME ~$0.026; many txs Sponsored' },
+  // Radar-7 additions, researched 2026-11-27 (see README for sources). No
+  // chain now lacks a reliable figure: the 7 radar-6 unknowns are all
+  // resolved, so 0 of the 198 rows sit on a fee-unknown chain. Four of the
+  // seven have no true DEX swap (Canton, Bittensor, RISE, XION), so their
+  // swap range is null and per-tx is the honest proxy, as for Noble and
+  // Provenance. Canton $1.00 is the table's new maximum per-tx figure,
+  // above Stacks $0.80; Bittensor $0.70 is second.
+  { chain: 'RISE', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.005, quality: 'measured', basis: 'explorer 24h avg fee 0.00000092 ETH, ETH ~$1,700, so ~$0.0016 avg tx; swap scaled 2-3x by gas. No spot DEX yet (perps only, gas-sponsored), so per-tx is a scaled average, not a swap median' },
+  { chain: 'BSquared', swap_lo_usd: 0.0001, swap_hi_usd: 0.001, per_tx_usd: 0.001, quality: 'measured', basis: 'DefiLlama 24h chain fees $3.78 / 45,434 txs = $0.000083 avg tx; swap scaled up by gas. Settles radar-6\'s conflict in favour of the ~$0.0001 figure' },
+  { chain: 'Bittensor', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.7, quality: 'estimate', basis: 'SwapSpace avg tx fee $0.30-0.70 (Nov 25 2026); no conventional DEX swap — closest is subnet stake/unstake, whose 0.05% pool fee is excluded. Heavy ops can cost several dollars' },
+  { chain: 'Pharos', swap_lo_usd: 0.03, swap_hi_usd: 0.1, per_tx_usd: 0.1, quality: 'estimate', basis: 'project-stated claim fee 0.05 PROS ~$0.034, swap scaled 2-3x; no explorer swap median published. Gas sponsorship planned Q4 2026 may make some apps $0' },
+  { chain: 'Mezo', swap_lo_usd: 0.02, swap_hi_usd: 0.1, per_tx_usd: 0.1, quality: 'estimate', basis: '79 mainnet settlements ~$0.024 each (Nov 12 2026), swap scaled 2-4x by gas; gas paid in BTC; Mezo Swap is a real in-app DEX. Bridge-in (~$3 tBTC fee) is separate' },
+  { chain: 'XION', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 0.001, quality: 'estimate', basis: 'Foundation: avg tx <$0.0001 (2025); gas paid in USDC, often app-sponsored so the user-facing fee is often $0; only DEX is Blaze Swap (TVL $3,391)' },
+  { chain: 'Canton', swap_lo_usd: null, swap_hi_usd: null, per_tx_usd: 1, quality: 'estimate', basis: 'traffic price $60/MB (all current sources agree), ~$1 per typical tx; no public DEX; fee is paid by validators/operators, the end user may not pay directly' },
 ];
 
 /** The fee figure for a chain, or null when no reliable public figure exists. */
@@ -1020,6 +1043,43 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
     );
   }
 
+  // Radar-7 closest call: a two-segment fit, separate OLS below and above
+  // the training median log TVL (the split is recomputed inside every fold,
+  // so no held-out row leaks into its own split). It passes both tests on
+  // the medians, and is still not adopted: the fitted curve jumps about 26%
+  // at the split, the mean error is worse than the kept curve's, and it wins
+  // on only 51 of 128 protocols. Computed here so the dashboard shows the
+  // comparison, not a claim about it.
+  const twoSegmentFit = (tr: number[][], ty: number[]): { split: number; lo: number[]; hi: number[] } => {
+    const xs = tr.map((r) => r[1]!).sort((a, b) => a - b);
+    const split = median(xs);
+    const loRows = tr.filter((r) => r[1]! <= split);
+    const loY = ty.filter((_, j) => tr[j]![1]! <= split);
+    const hiRows = tr.filter((r) => r[1]! > split);
+    const hiY = ty.filter((_, j) => tr[j]![1]! > split);
+    return { split, lo: ols(loRows, loY), hi: ols(hiRows, hiY) };
+  };
+  const twoSegmentPred = (f: { split: number; lo: number[]; hi: number[] }, x: number): number => {
+    const c = x <= f.split ? f.lo : f.hi;
+    return c[0]! + c[1]! * x;
+  };
+  const twoSegmentLooErrs: number[] = [];
+  for (let i = 0; i < live.length; i++) {
+    const tr = rows2.filter((_, j) => j !== i);
+    const ty = y.filter((_, j) => j !== i);
+    twoSegmentLooErrs.push(Math.abs(y[i]! - twoSegmentPred(twoSegmentFit(tr, ty), rows2[i]![1]!)));
+  }
+  const twoSegmentLoo = median(twoSegmentLooErrs);
+  const twoSegmentLooMean = mean(twoSegmentLooErrs);
+  let twoSegmentWf = 0;
+  if (trainIdx.length > 10 && testIdx.length > 0) {
+    const f = twoSegmentFit(
+      trainIdx.map((i) => rows2[i]!),
+      trainIdx.map((i) => y[i]!),
+    );
+    twoSegmentWf = median(testIdx.map((i) => Math.abs(y[i]! - twoSegmentPred(f, rows2[i]![1]!))));
+  }
+
   // Peer odds by age: the share of protocols at that age that record a token,
   // smoothed toward the overall rate with a 20-protocol prior so small buckets
   // do not swing the board.
@@ -1084,6 +1144,9 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
       trimmed_loo: trimmedLoo,
       quintile_loo: quintileLoo,
       isotonic_loo: isotonicLoo,
+      two_segment_loo: twoSegmentLoo,
+      two_segment_wf: twoSegmentWf,
+      two_segment_loo_mean: twoSegmentLooMean,
       ablation_top20: [],
       odds_cv_brier: oddsCv.brier,
       odds_cv_brier_no_null: oddsCv.brierNoNull,
@@ -1186,12 +1249,13 @@ export function money2(n: number): string {
  * instead of quoting a guess. Radar-6 researched 25 more chains (Flare, Ink,
  * Provenance, Plasma, Arc, Ripple, Noble, Manta, World Chain, Kava, Morph, RSK,
  * Ronin, Proton, Tempo, Reya, Starknet, Strato, Stable, Klaytn, Bifrost
- * Network, Qubic, Stacks, Fluent, Plume Mainnet), so only 8 rows still sit
- * on chains with no reliable figure (RISE, BSquared, Bittensor, Pharos,
- * Mezo, XION, Canton). Two of the new chains are expensive enough to matter:
- * RSK $0.25 and Stacks $0.80 per transaction. Two have no DEX at all (Noble,
- * and Provenance's Cosmos-side settlement), so their figures are transfer
- * costs, not swap medians, and the farm steps say so.
+ * Network, Qubic, Stacks, Fluent, Plume Mainnet). Radar-7 resolved the last
+ * seven (RISE, BSquared, Bittensor, Pharos, Mezo, XION, Canton), so no row
+ * is fee-unknown. The most expensive chains are now Canton $1.00, Stacks
+ * $0.80 and Bittensor $0.70 per transaction. Four chains have no DEX at
+ * all (Noble, Provenance's Cosmos-side settlement, Canton, Bittensor), so
+ * their figures are transfer or average-tx costs, not swap medians, and the
+ * farm steps say so.
  */
 export function farmSteps(p: SnapshotProtocol, age: number | null): FarmStep[] {
   const chain = chainOf(p);
