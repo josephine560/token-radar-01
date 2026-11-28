@@ -9,13 +9,15 @@ A static dashboard that reads a sealed DefiLlama snapshot (758 protocols, as of
 value, and gives each one a costed farm plan. Built for the make.fun bounty
 [Build the best token launch radar](https://make.fun/bounty/token-radar-01).
 
-## The model (radar-7; value curve unchanged from radar-3)
+## The model (radar-8; two-segment value curve, blended)
 
 Implied value is fitted from the snapshot itself, not from a hand-kept list:
 
 ```
 implied = fitted_mcap(TVL) x odds(age)
-log(mcap / TVL) = 6.965 - 0.478 x log(TVL)
+log(mcap / TVL) = 1.714 - 0.154 x log(TVL) below $32.6M TVL
+                = 7.434 - 0.502 x log(TVL) above $32.6M TVL
+blended linearly over ±0.5 log TVL around the split, so the curve never jumps
 ```
 
 The curve is fitted at run time by least squares on the 128 token-recorded
@@ -69,14 +71,21 @@ fits, log age with a missing-age dummy, fixed slope -0.5, recency-weighted
 OLS, dropping high-volatility rows, and log TVL + growth. Eight win on
 walk-forward alone, nine lose on both, two are identical to the kept curve —
 and one passes both medians: a two-segment split at median log TVL (LOO 1.208,
-walk-forward 1.335). It is still not adopted: the fitted curve jumps 26% at
-the $32.6M split, the mean leave-one-out error is worse than the kept
-curve's (1.63 vs 1.60), and it wins on only 51 of 128 protocols — a median
-pass that is not a real improvement. Its numbers are computed at run time and
-shown on the dashboard, with the reasons it was declined. The odds model was
-also re-tested: a logistic regression on age-bucket dummies plus log TVL ties
-the bucket odds (Brier 0.2128 vs 0.2135, log loss 0.6170 vs 0.6173) — a tie in
-substance, not a win — so the buckets stay.
+walk-forward 1.335). Unblended it jumps 26% at the $32.6M split, so radar-7
+declined it; radar-8 adopts it blended linearly over ±0.5 log TVL
+($19.8M-$53.7M), so the curve bends instead of jumping — the blend keeps the
+gains (LOO 1.212, walk-forward 1.335, wins 54/128; repeated 5-fold median
+1.249 vs 1.270 for the single curve) while the two protocols either side of
+the line (Plasma One $31.9M, Aegis YUSD $34.5M) price 2.8% apart instead
+of 29%. The mean error is still worse than the single curve's (1.622 vs 1.596),
+and it wins on fewer than half the protocols — a median win, disclosed on the
+dashboard, not a sweep. Shrinkage toward the single curve and wider blends
+fail leave-one-out (1.224 and 1.225); moving the split to q=0.55 passes
+(1.182 / 1.307) but picks the split by the validation numbers, so it is not
+adopted. The odds model was also re-tested: a logistic regression on
+age-bucket dummies plus log TVL ties the bucket odds (Brier 0.2128 vs 0.2135,
+log loss 0.6170 vs 0.6173) — a tie in substance, not a win — so the buckets
+stay.
 
 Radar-3's one model change is the odds. Protocols whose listing date the
 snapshot does not record used to get the overall token rate (0.549); 113 such
@@ -109,7 +118,7 @@ base-bridge, binance-bitcoin and coinbase-bridge at the top; the full
 exclusion (category, versioned names, wrapped/staked/staking words, exchange
 name prefixes) removes them.
 
-## Farm verdicts (radar-7; net figures unchanged from radar-6)
+## Farm verdicts (radar-8; nets re-priced by the blended curve)
 
 The snapshot has no airdrop share and no fee, so no row promises dollars per
 farmer. The verdict ranks effort: FARM is the top quarter by implied value with
