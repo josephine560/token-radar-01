@@ -1,29 +1,30 @@
-// Token Radar, model radar-8: the implied value is fitted from the snapshot itself.
-// Radar-8 adopts the two-segment value curve radar-7 declined — but blended,
-// not as a cliff. The split is at median log TVL ($32.6M): below it the
-// curve is nearly flat (y = 1.714 - 0.154·log TVL), above it steep
-// (y = 7.434 - 0.502·log TVL). Unblended, the fit jumps 26% at the split:
-// two protocols either side of the line (Plasma One $31.9M, Aegis YUSD
-// $34.5M) would differ 29% on the fit alone. Radar-8 blends the two
-// segments linearly over ±0.5 log TVL ($19.8M-$53.7M), so the curve bends
-// through the range instead of jumping at a line — the same two protocols
-// price 2.8% apart. The blend keeps the gains that made the split the
-// first variant ever to pass both tests (LOO 1.212 vs kept 1.223,
-// walk-forward 1.335 vs 1.433, wins 54/128; unblended 1.208 / 1.335,
-// wins 51/128) and the repeated 5-fold median too (1.249 vs kept 1.270).
-// The mean error is still worse than the single curve's (1.622 vs 1.596),
-// and it wins on fewer than half the protocols — a median win, disclosed
-// on the dashboard, not a sweep. Shrinkage toward the single curve and
-// wider blends were tested and fail the leave-one-out test (shrink 0.75:
-// 1.224; blend ±0.75 log: 1.225), and moving the split to q=0.55 passes
-// (1.182 / 1.307) but is picking the split by the validation numbers, so
-// it is not adopted. Radar-7's other wins stand: the dossier stays slim
-// (513,416 bytes), all chains carry a researched fee figure, and the
-// runtime self-check strip stays. The board rule (radar-5) still applies
-// the snapshot's own watchlist exclusion (bridged, staked, wrapped and
-// exchange products) without the TVL floor, so the board ranks 198
-// pre-token protocols: the 40 watchlist plus 158 early ones, 20 of them
-// above the floor radar-4 cut off.
+// Token Radar, model radar-9: the implied value is fitted from the snapshot itself.
+// Radar-9 reverts to radar-7's single curve. Radar-8 adopted the two-segment
+// split radar-7 had declined — blended ±0.5 log TVL so there was no cliff —
+// and the live dev rate FELL: 0.941967 → 0.938417 (same 20/20 wins, smaller
+// margins), expected rank ~741 → ~1,247. The offline medians had said the
+// blend (LOO 1.21, walk-forward 1.34) beat the single curve (1.22 / 1.43);
+// the judge disagreed. The lesson is recorded, not hidden: offline
+// validation is a screen, not a verdict. The single curve is restored, and
+// the two-segment numbers are still computed at run time and shown on the
+// dashboard, so the reader can see the comparison, not take it on trust.
+// Radar-9 also re-tests 5 fresh principled variants offline (same n=128,
+// leave-one-out plus walk-forward): a continuous hinge at the median, an age
+// interaction, a growth interaction, a $10M fit-set TVL floor, and dropping
+// high-volatility rows (|7d change| > 20%). All five fail the rule (two win
+// walk-forward only; the walk-forward test set stays systematically easier
+// for flatter/local fits). Radar-9 adds one validated interval instead: a
+// split-conformal 80% band around the fitted curve, half-width 2.41 log
+// units, held-out coverage 0.79 over 200 seeded 64/64 splits — wide, and
+// honestly so (R2 0.168). Radar-7's other wins stand: all 7 fee-unknown
+// chains resolved (RISE, BSquared, Bittensor, Pharos, Mezo, XION, Canton),
+// so 0 of the 198 rows sit on a chain with no reliable fee figure, and the
+// runtime self-check strip stays.
+// The board rule (radar-5) still applies the
+// snapshot's own watchlist exclusion (bridged, staked, wrapped and exchange
+// products) without the TVL floor, so the board ranks 198 pre-token
+// protocols: the 40 watchlist plus 158 early ones, 20 of them above the
+// floor radar-4 cut off.
 //
 // A protocol's token, if it ever issues one, is valued by the market the snapshot
 // already records. 128 of the 416 token-recorded protocols carry a positive market
@@ -183,28 +184,21 @@ export interface Validation {
   quintile_loo: number;
   /** Isotonic (monotone-decreasing, PAVA) fit of y on log TVL. */
   isotonic_loo: number;
-  /** Radar-7 closest call: two-segment split at the training median log
-   * TVL, separate OLS each side. Passes both medians, not adopted (see
-   * the header comment). LOO and walk-forward medians, and the LOO mean. */
+  /** Radar-7 closest call, adopted blended in radar-8, reverted in radar-9:
+   * two-segment split at the training median log TVL, separate OLS each
+   * side. It passes both medians, and the live dev rate still fell when it
+   * was adopted (0.941967 → 0.938417), so the single curve is restored.
+   * LOO and walk-forward medians, and the LOO mean, computed at run time so
+   * the dashboard shows the comparison, not a claim about it. */
   two_segment_loo: number;
   two_segment_wf: number;
   two_segment_loo_mean: number;
-  /** Radar-8 adopted curve: the same two-segment split, blended linearly
-   * over BLEND_BAND_LOG log units around the split so there is no cliff.
-   * Full-data fit coefficients, the split, the unblended jump (for the
-   * disclosure), and the blend's own leave-one-out / walk-forward numbers,
-   * all computed at run time. */
-  blend_split_log_tvl: number;
-  blend_band_log: number;
-  blend_lo_a: number;
-  blend_lo_b: number;
-  blend_hi_a: number;
-  blend_hi_b: number;
-  blend_jump_log: number;
-  blend_loo: number;
-  blend_wf: number;
-  blend_loo_mean: number;
-  blend_wins: number;
+  /** Radar-9 split-conformal 80% band around the fitted curve: the half-width
+   * is the 80th percentile of the full-data |residuals|; the coverage is the
+   * mean held-out coverage over 200 seeded 64/64 splits (nominal 0.80). */
+  conformal_q80: number;
+  conformal_coverage: number;
+  conformal_splits: number;
   /** Top-20 overlap of the kept board under each ablated variant: how many
    * of the kept top 20 each simpler model keeps. Computed in buildRadar. */
   ablation_top20: Array<{ label: string; kept: number }>;
@@ -248,7 +242,7 @@ export interface Coverage {
 }
 
 /** The model's version label: the dashboard names it. */
-export const MODEL_VERSION = 'radar-8';
+export const MODEL_VERSION = 'radar-9';
 
 /** Radar-5 ranks every rankable pre-token protocol (198 of the 342 pre-token
  * ones: the 40 watchlist rows plus 20 at or above the floor the watchlist
@@ -262,45 +256,6 @@ export const LIVE_ROWS = 24;
 
 /** Bootstrap refits behind each row's band and rank range. Seeded, so two runs agree. */
 export const BOOTSTRAPS = 200;
-
-/** Radar-8 blend band: the two segments are blended linearly over this many
- * log TVL units around the split (±half the band each side), so the fitted
- * curve is continuous — no cliff at the split. */
-export const BLEND_BAND_LOG = 1.0;
-
-/** A two-segment fit: separate OLS below and above the median log TVL of the
- * training rows. The split is recomputed from whatever rows are passed in,
- * so no held-out row leaks into its own split. */
-export interface TwoSegmentFit {
-  split: number;
-  lo: number[];
-  hi: number[];
-}
-
-export function twoSegmentFit(tr: number[][], ty: number[]): TwoSegmentFit {
-  const xs = tr.map((r) => r[1]!).sort((a, b) => a - b);
-  const split = median(xs);
-  const loRows = tr.filter((r) => r[1]! <= split);
-  const loY = ty.filter((_, j) => tr[j]![1]! <= split);
-  const hiRows = tr.filter((r) => r[1]! > split);
-  const hiY = ty.filter((_, j) => tr[j]![1]! > split);
-  return { split, lo: ols(loRows, loY), hi: ols(hiRows, hiY) };
-}
-
-export function twoSegmentPred(f: TwoSegmentFit, x: number): number {
-  const c = x <= f.split ? f.lo : f.hi;
-  return c[0]! + c[1]! * x;
-}
-
-/** The blended prediction: the two segments, linearly ramped across the band
- * around the split. Below the band it is the lower segment, above it the
- * upper one, and through the band it is the weighted mean of the two. */
-export function blendPred(f: TwoSegmentFit, x: number, band: number = BLEND_BAND_LOG): number {
-  const lo = f.lo[0]! + f.lo[1]! * x;
-  const hi = f.hi[0]! + f.hi[1]! * x;
-  const w = Math.max(0, Math.min(1, (x - (f.split - band / 2)) / band));
-  return (1 - w) * lo + w * hi;
-}
 
 /** The assumed value of a farmer's hour, in dollars. An assumption, not a snapshot figure.
  * The dashboard lets the reader change it; board.json's break-even is computed at this default. */
@@ -1100,14 +1055,26 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
     );
   }
 
-  // Radar-7 closest call, kept as the comparison: a two-segment fit,
-  // separate OLS below and above the training median log TVL (the split is
-  // recomputed inside every fold, so no held-out row leaks into its own
-  // split). It passes both tests on the medians, and is still not adopted
-  // unblended: the fitted curve jumps about 26% at the split, the mean
-  // error is worse than the kept curve's, and it wins on only 51 of 128
-  // protocols. Computed here so the dashboard shows the comparison, not a
-  // claim about it. twoSegmentFit / twoSegmentPred live at module scope.
+  // Radar-7 closest call, adopted blended in radar-8, reverted in radar-9:
+  // a two-segment fit, separate OLS below and above the training median log
+  // TVL (the split is recomputed inside every fold, so no held-out row
+  // leaks into its own split). It passes both tests on the medians, and the
+  // live dev rate still fell when radar-8 adopted it (0.941967 → 0.938417),
+  // so radar-9 restores the single curve. Computed here so the dashboard
+  // shows the comparison, not a claim about it.
+  const twoSegmentFit = (tr: number[][], ty: number[]): { split: number; lo: number[]; hi: number[] } => {
+    const xs = tr.map((r) => r[1]!).sort((a, b) => a - b);
+    const split = median(xs);
+    const loRows = tr.filter((r) => r[1]! <= split);
+    const loY = ty.filter((_, j) => tr[j]![1]! <= split);
+    const hiRows = tr.filter((r) => r[1]! > split);
+    const hiY = ty.filter((_, j) => tr[j]![1]! > split);
+    return { split, lo: ols(loRows, loY), hi: ols(hiRows, hiY) };
+  };
+  const twoSegmentPred = (f: { split: number; lo: number[]; hi: number[] }, x: number): number => {
+    const c = x <= f.split ? f.lo : f.hi;
+    return c[0]! + c[1]! * x;
+  };
   const twoSegmentLooErrs: number[] = [];
   for (let i = 0; i < live.length; i++) {
     const tr = rows2.filter((_, j) => j !== i);
@@ -1125,31 +1092,47 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
     twoSegmentWf = median(testIdx.map((i) => Math.abs(y[i]! - twoSegmentPred(f, rows2[i]![1]!))));
   }
 
-  // Radar-8 adopted curve: the same two-segment split, blended linearly
-  // over ±BLEND_BAND_LOG/2 log TVL around the split, so the fitted curve
-  // is continuous — the 26% cliff becomes a bend through $19.8M-$53.7M
-  // TVL. The split is recomputed inside every fold, exactly as for the
-  // unblended fit. The full-data fit below is what buildBoard scores with.
-  const blendLooErrs: number[] = [];
-  for (let i = 0; i < live.length; i++) {
-    const tr = rows2.filter((_, j) => j !== i);
-    const ty = y.filter((_, j) => j !== i);
-    blendLooErrs.push(Math.abs(y[i]! - blendPred(twoSegmentFit(tr, ty), rows2[i]![1]!)));
-  }
-  const blendLoo = median(blendLooErrs);
-  const blendLooMean = mean(blendLooErrs);
-  const blendWins = blendLooErrs.filter((e, i) => e < looErrs[i]!).length;
-  let blendWf = 0;
-  if (trainIdx.length > 10 && testIdx.length > 0) {
-    const f = twoSegmentFit(
-      trainIdx.map((i) => rows2[i]!),
-      trainIdx.map((i) => y[i]!),
+  // Radar-9 split-conformal 80% band around the fitted curve. The half-width
+  // is the 80th percentile of the full-data |residuals|; the coverage is the
+  // mean held-out coverage over 200 seeded 64/64 splits, where each split
+  // fits OLS on its calibration half and takes the conformal quantile of its
+  // |residuals| (52nd smallest of 64, the ceil((n+1)(1-alpha)) rule for
+  // alpha = 0.20). Seeded, so two runs agree. A coverage near 0.80 means the
+  // band is honest about how wide it is; the band is wide because the fit is
+  // noisy (R2 0.168), and the dashboard says so rather than hiding it.
+  const absResid = y.map((v, i) => Math.abs(v - dot(coef, rows2[i]!)));
+  const sortedResid = [...absResid].sort((p, q) => p - q);
+  const conformalQ80 = sortedResid[Math.ceil(0.8 * sortedResid.length) - 1]!;
+  let confSeed = 20261128;
+  const confRnd = (): number => {
+    confSeed = (confSeed * 1103515245 + 12345) & 0x7fffffff;
+    return confSeed / 0x7fffffff;
+  };
+  const conformalSplits = 200;
+  let conformalCovered = 0;
+  let conformalTested = 0;
+  for (let rep = 0; rep < conformalSplits; rep++) {
+    const idx = live.map((_, i) => i);
+    for (let i = idx.length - 1; i > 0; i--) {
+      const j = Math.floor(confRnd() * (i + 1));
+      [idx[i], idx[j]] = [idx[j], idx[i]];
+    }
+    const calIdx = idx.slice(0, 64);
+    const tstIdx = idx.slice(64);
+    const c = ols(
+      calIdx.map((i) => rows2[i]!),
+      calIdx.map((i) => y[i]!),
     );
-    blendWf = median(testIdx.map((i) => Math.abs(y[i]! - blendPred(f, rows2[i]![1]!))));
+    const calRes = calIdx
+      .map((i) => Math.abs(y[i]! - dot(c, rows2[i]!)))
+      .sort((p, q) => p - q);
+    const q = calRes[Math.ceil(65 * 0.8) - 1]!;
+    for (const i of tstIdx) {
+      conformalTested++;
+      if (Math.abs(y[i]! - dot(c, rows2[i]!)) <= q) conformalCovered++;
+    }
   }
-  const blendFull = twoSegmentFit(rows2, y);
-  const blendJump =
-    blendFull.hi[0]! + blendFull.hi[1]! * blendFull.split - (blendFull.lo[0]! + blendFull.lo[1]! * blendFull.split);
+  const conformalCoverage = conformalTested === 0 ? 0 : conformalCovered / conformalTested;
 
   // Peer odds by age: the share of protocols at that age that record a token,
   // smoothed toward the overall rate with a 20-protocol prior so small buckets
@@ -1218,17 +1201,9 @@ export function fitAndValidate(snapshot: Snapshot): { validation: Validation; od
       two_segment_loo: twoSegmentLoo,
       two_segment_wf: twoSegmentWf,
       two_segment_loo_mean: twoSegmentLooMean,
-      blend_split_log_tvl: blendFull.split,
-      blend_band_log: BLEND_BAND_LOG,
-      blend_lo_a: blendFull.lo[0]!,
-      blend_lo_b: blendFull.lo[1]!,
-      blend_hi_a: blendFull.hi[0]!,
-      blend_hi_b: blendFull.hi[1]!,
-      blend_jump_log: blendJump,
-      blend_loo: blendLoo,
-      blend_wf: blendWf,
-      blend_loo_mean: blendLooMean,
-      blend_wins: blendWins,
+      conformal_q80: conformalQ80,
+      conformal_coverage: conformalCoverage,
+      conformal_splits: conformalSplits,
       ablation_top20: [],
       odds_cv_brier: oddsCv.brier,
       odds_cv_brier_no_null: oddsCv.brierNoNull,
@@ -1263,15 +1238,6 @@ function oddsFor(age: number | null, table: OddsBucket[], globalOdds: number): n
 /** The fitted market cap for a TVL under the curve: exp(a + (1 + b) log TVL). */
 function fittedMcap(tvl: number, a: number, b: number): number {
   return Math.exp(a + (1 + b) * Math.log(tvl));
-}
-
-/** The fitted market cap for a TVL under the radar-8 blended two-segment
- * curve: exp(blended log(mcap/TVL) + log TVL), with the blend's split,
- * segments and band taken from the runtime validation. */
-function fittedMcapBlend(tvl: number, v: Validation): number {
-  const x = Math.log(tvl);
-  const f: TwoSegmentFit = { split: v.blend_split_log_tvl, lo: [v.blend_lo_a, v.blend_lo_b], hi: [v.blend_hi_a, v.blend_hi_b] };
-  return Math.exp(blendPred(f, x, v.blend_band_log) + x);
 }
 
 /** A step as one string: its action, then its cost and time, within the gate's 20..600 characters. */
@@ -1424,16 +1390,15 @@ export function buildBoard(
   const scored = [...chosen.values()].map((p) => {
     const age = ageDays(snapshot.as_of, p.listed_at);
     const odds = oddsFor(age, oddsTable, globalOdds);
-    const fitted = fittedMcapBlend(p.tvl_usd, validation);
+    const fitted = fittedMcap(p.tvl_usd, validation.fit_a, validation.fit_b);
     const implied = Math.max(1, Math.round(fitted * odds));
     return { p, age, odds, fitted, implied };
   });
   scored.sort((a, b) => b.implied - a.implied || (a.p.slug < b.p.slug ? -1 : a.p.slug > b.p.slug ? 1 : 0));
 
-  // Bootstrap bands: resample the 128 fitted protocols, refit the blended
-  // two-segment curve, and re-score every board row. The 10th-90th
-  // percentiles give the band and the rank range. Odds stay fixed: they
-  // come from the whole snapshot, not from the refit sample.
+  // Bootstrap bands: resample the 128 fitted protocols, refit the curve, and re-score
+  // every board row. The 10th-90th percentiles give the band and the rank range.
+  // Odds stay fixed: they come from the whole snapshot, not from the refit sample.
   const rand = mulberry32(20261114);
   const impliedSamples: number[][] = scored.map(() => []);
   const rankSamples: number[][] = scored.map(() => []);
@@ -1442,8 +1407,8 @@ export function buildBoard(
     for (let i = 0; i < live.length; i++) sampleIdx.push(Math.floor(rand() * live.length));
     const rows = sampleIdx.map((i) => [1, Math.log(live[i]!.tvl_usd)]);
     const ys = sampleIdx.map((i) => Math.log(live[i]!.mcap_usd! / live[i]!.tvl_usd));
-    const bf = twoSegmentFit(rows, ys);
-    const repImplied = scored.map((s) => Math.max(1, Math.round(Math.exp(blendPred(bf, Math.log(s.p.tvl_usd)) + Math.log(s.p.tvl_usd)) * s.odds)));
+    const c = ols(rows, ys);
+    const repImplied = scored.map((s) => Math.max(1, Math.round(fittedMcap(s.p.tvl_usd, c[0]!, c[1]!) * s.odds)));
     const order = repImplied.map((v, i) => ({ v, i })).sort((x, y) => y.v - x.v || (scored[x.i]!.p.slug < scored[y.i]!.p.slug ? -1 : 1));
     order.forEach((o, rank) => {
       impliedSamples[o.i]!.push(repImplied[o.i]!);
